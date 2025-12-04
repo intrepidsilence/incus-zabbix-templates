@@ -2434,6 +2434,190 @@ zabbix_export:
               newvalue: Evacuated
             - value: Blocked
               newvalue: Blocked
+      dashboards:
+        - uuid: fd17d30dfb0d4c79bcd4404448809d1a
+          name: 'Incus: Cluster Overview'
+          pages:
+            - name: Overview
+              widgets:
+                - type: problemhosts
+                  name: 'Cluster Problems'
+                  width: '24'
+                  height: '8'
+                  fields:
+                    - type: STRING
+                      name: reference
+                      value: INCUS1
+                - type: item
+                  name: 'API Status'
+                  x: '24'
+                  width: '12'
+                  height: '4'
+                  fields:
+                    - type: ITEM
+                      name: itemid
+                      value:
+                        host: 'Incus Cluster by HTTP'
+                        key: incus.api.health
+                    - type: STRING
+                      name: reference
+                      value: INCUS2
+                - type: item
+                  name: 'Cluster Members'
+                  x: '36'
+                  width: '12'
+                  height: '4'
+                  fields:
+                    - type: ITEM
+                      name: itemid
+                      value:
+                        host: 'Incus Cluster by HTTP'
+                        key: incus.cluster.members.count
+                    - type: STRING
+                      name: reference
+                      value: INCUS3
+                - type: item
+                  name: 'Members Online'
+                  x: '48'
+                  width: '12'
+                  height: '4'
+                  fields:
+                    - type: ITEM
+                      name: itemid
+                      value:
+                        host: 'Incus Cluster by HTTP'
+                        key: incus.cluster.members.online
+                    - type: STRING
+                      name: reference
+                      value: INCUS4
+                - type: item
+                  name: 'Active Warnings'
+                  x: '60'
+                  width: '12'
+                  height: '4'
+                  fields:
+                    - type: ITEM
+                      name: itemid
+                      value:
+                        host: 'Incus Cluster by HTTP'
+                        key: incus.warnings.count
+                    - type: STRING
+                      name: reference
+                      value: INCUS5
+                - type: item
+                  name: 'Total Instances'
+                  x: '24'
+                  'y': '4'
+                  width: '12'
+                  height: '4'
+                  fields:
+                    - type: ITEM
+                      name: itemid
+                      value:
+                        host: 'Incus Cluster by HTTP'
+                        key: incus.instances.total
+                    - type: STRING
+                      name: reference
+                      value: INCUS6
+                - type: item
+                  name: 'Running Instances'
+                  x: '36'
+                  'y': '4'
+                  width: '12'
+                  height: '4'
+                  fields:
+                    - type: ITEM
+                      name: itemid
+                      value:
+                        host: 'Incus Cluster by HTTP'
+                        key: incus.instances.running
+                    - type: STRING
+                      name: reference
+                      value: INCUS7
+                - type: item
+                  name: 'Stopped Instances'
+                  x: '48'
+                  'y': '4'
+                  width: '12'
+                  height: '4'
+                  fields:
+                    - type: ITEM
+                      name: itemid
+                      value:
+                        host: 'Incus Cluster by HTTP'
+                        key: incus.instances.stopped
+                    - type: STRING
+                      name: reference
+                      value: INCUS8
+                - type: item
+                  name: 'Containers'
+                  x: '60'
+                  'y': '4'
+                  width: '12'
+                  height: '4'
+                  fields:
+                    - type: ITEM
+                      name: itemid
+                      value:
+                        host: 'Incus Cluster by HTTP'
+                        key: incus.containers.total
+                    - type: STRING
+                      name: reference
+                      value: INCUS9
+                - type: problemsbysv
+                  name: 'Problems by Severity'
+                  'y': '8'
+                  width: '36'
+                  height: '5'
+                  fields:
+                    - type: STRING
+                      name: reference
+                      value: INCUSA
+                - type: item
+                  name: 'VMs'
+                  x: '36'
+                  'y': '8'
+                  width: '12'
+                  height: '4'
+                  fields:
+                    - type: ITEM
+                      name: itemid
+                      value:
+                        host: 'Incus Cluster by HTTP'
+                        key: incus.vms.total
+                    - type: STRING
+                      name: reference
+                      value: INCUSB
+                - type: item
+                  name: 'Images'
+                  x: '48'
+                  'y': '8'
+                  width: '12'
+                  height: '4'
+                  fields:
+                    - type: ITEM
+                      name: itemid
+                      value:
+                        host: 'Incus Cluster by HTTP'
+                        key: incus.images.count
+                    - type: STRING
+                      name: reference
+                      value: INCUSC
+                - type: item
+                  name: 'Projects'
+                  x: '60'
+                  'y': '8'
+                  width: '12'
+                  height: '4'
+                  fields:
+                    - type: ITEM
+                      name: itemid
+                      value:
+                        host: 'Incus Cluster by HTTP'
+                        key: incus.projects.count
+                    - type: STRING
+                      name: reference
+                      value: INCUSD
   triggers:
     - uuid: 3e6b415ef266443a9824b9e906adb4aa
       expression: 'last(/Incus Cluster by HTTP/incus.cluster.members.online)<last(/Incus Cluster by HTTP/incus.cluster.members.count) and last(/Incus Cluster by HTTP/incus.cluster.enabled)=1 and {$INCUS.MAINTENANCE}=0'
