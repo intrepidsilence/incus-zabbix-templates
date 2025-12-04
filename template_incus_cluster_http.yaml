@@ -2526,18 +2526,6 @@ zabbix_export:
                       name: show
                       value: '2'
                     - type: STRING
-                      name: thresholds.color.0
-                      value: 4CAF50
-                    - type: STRING
-                      name: thresholds.threshold.0
-                      value: '0'
-                    - type: STRING
-                      name: thresholds.color.1
-                      value: FF5722
-                    - type: STRING
-                      name: thresholds.threshold.1
-                      value: '1'
-                    - type: STRING
                       name: reference
                       value: INCUS5
                 - type: piechart
@@ -2626,12 +2614,6 @@ zabbix_export:
                     - type: INTEGER
                       name: show
                       value: '2'
-                    - type: STRING
-                      name: thresholds.color.0
-                      value: 4CAF50
-                    - type: STRING
-                      name: thresholds.threshold.0
-                      value: '1'
                     - type: STRING
                       name: reference
                       value: INCUS8
