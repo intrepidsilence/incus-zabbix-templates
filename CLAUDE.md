@@ -32,6 +32,16 @@ Manual Host: "Incus Cluster"
 | Incus OCI Container | `templates/template_incus_oci_container.yaml` | OCI/Docker-style container monitoring |
 | Incus Virtual Machine | `templates/template_incus_virtual_machine.yaml` | VM monitoring |
 
+### Import Order
+
+Templates must be imported in dependency order (children first):
+
+1. `template_incus_system_container.yaml`
+2. `template_incus_oci_container.yaml`
+3. `template_incus_virtual_machine.yaml`
+4. `template_incus_member.yaml`
+5. `template_incus_cluster.yaml`
+
 ### Instance Type Detection
 
 Instances are differentiated using:
@@ -53,9 +63,21 @@ Instances are differentiated using:
 
 Templates use Zabbix 7.4 YAML export format. Key structures:
 - `host_prototypes[]` in discovery rules create new Zabbix hosts
-- `group_prototypes[]` define dynamic host groups
+- `group_prototypes[]` define dynamic host groups (use LLD macros only)
 - `templates[]` in host prototypes link child templates
-- `macros[]` in host prototypes pass LLD values to child hosts
+- `macros[]` in host prototypes pass LLD values to child hosts as user macros
+
+### Macro Types and Usage
+
+**LLD Macros** (`{#MACRO}`):
+- Created by discovery from JSON data via `lld_macro_paths`
+- Used in host prototype names, group prototypes, and filter conditions
+- Resolved at discovery time
+
+**User Macros** (`{$MACRO}`):
+- Defined on hosts/templates, inherited down the hierarchy
+- Used in item URLs, intervals, thresholds, trigger expressions
+- **NOT resolved in tag values** on template items (use host-level tags instead)
 
 ### Macro Inheritance
 
@@ -64,10 +86,37 @@ Cluster Host (manual)
   {$INCUS.API.HOST}, {$INCUS.TLS.CERT}, {$INCUS.TLS.KEY}
       ↓ inherited
 Member Host (discovered)
-  {$INCUS.MEMBER.NAME}, {$INCUS.MEMBER.ADDRESS} ← from LLD
+  {$INCUS.MEMBER.NAME}, {$INCUS.MEMBER.ADDRESS} ← from LLD via host prototype
       ↓ inherited
 Instance Host (discovered)
-  {$INCUS.INSTANCE.NAME}, {$INCUS.INSTANCE.PROJECT} ← from LLD
+  {$INCUS.INSTANCE.NAME}, {$INCUS.INSTANCE.PROJECT} ← from LLD via host prototype
+```
+
+### Host-Level Tags (Resolved Correctly)
+
+Tags set on host prototypes using LLD macros resolve correctly:
+```yaml
+host_prototypes:
+  - host: '{#INSTANCE.PROJECT}-{#INSTANCE.NAME}'
+    name: '{#INSTANCE.NAME}'
+    tags:
+      - tag: instance
+        value: '{#INSTANCE.NAME}'    # ✓ Resolves correctly
+      - tag: project
+        value: '{#INSTANCE.PROJECT}' # ✓ Resolves correctly
+```
+
+### Item-Level Tags (Use Static Values Only)
+
+User macros in template item tags do NOT resolve:
+```yaml
+items:
+  - name: 'CPU usage'
+    tags:
+      - tag: component
+        value: cpu                    # ✓ Static value works
+      - tag: instance
+        value: '{$INCUS.INSTANCE.NAME}' # ✗ Shows literal macro text
 ```
 
 ### Adding New Items
@@ -76,6 +125,8 @@ Instance Host (discovered)
 2. Add master item (HTTP_AGENT) if new API endpoint needed
 3. Add dependent items with JSONPath preprocessing
 4. Follow key naming: `incus.<category>.<metric>`
+5. Use only static values or `component:` tags on items
+6. Instance/member identification comes from host-level tags
 
 ### Host Prototype Configuration
 
@@ -83,7 +134,8 @@ When modifying host prototypes:
 - `host` field must contain at least one LLD macro for uniqueness
 - `name` field is the visible name (can be more readable)
 - `templates` links child templates
-- `macros` converts LLD macros to host macros for child template use
+- `macros` converts LLD macros to user macros for child template use
+- `tags` set host-level tags (use LLD macros here)
 
 ## Incus API Reference
 
@@ -106,3 +158,22 @@ The templates interact with these endpoints:
 2. **Nested discovery**: Members discover their own instances for proper hierarchy
 3. **Three instance templates**: System containers, OCI containers, and VMs have different monitoring needs
 4. **OCI detection**: Uses `volatile.container.oci` config field to identify OCI containers
+5. **Tags at host level**: Instance/member identification via host tags (not item tags) because user macros don't resolve in template item tag values
+6. **Simplified instance names**: Visible name shows just instance name; project tracked via tag
+
+## Common Issues
+
+### Unresolved Macros in Tags
+If you see `{$INCUS.INSTANCE.NAME}` literally in the UI, the tag is defined on a template item using a user macro. Move such tags to the host prototype level using LLD macros instead.
+
+### UUIDs
+Zabbix 7.4 requires valid UUIDv4 format. Generate with:
+```python
+import uuid
+print(uuid.uuid4().hex)
+```
+
+### Template Import Errors
+- Import in dependency order (children first)
+- Ensure `template_groups` and `host_groups` are separate sections
+- Group prototypes can only use LLD macros, not user macros

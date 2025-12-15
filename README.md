@@ -53,13 +53,15 @@ Manual Host: "Incus Cluster"
 
 ### 1. Import Templates
 
-Import all template files in order:
+Import templates in dependency order (child templates first):
 
-1. `templates/template_incus_cluster.yaml` (main template)
-2. `templates/template_incus_member.yaml`
-3. `templates/template_incus_system_container.yaml`
-4. `templates/template_incus_oci_container.yaml`
-5. `templates/template_incus_virtual_machine.yaml`
+```
+1. templates/template_incus_system_container.yaml
+2. templates/template_incus_oci_container.yaml
+3. templates/template_incus_virtual_machine.yaml
+4. templates/template_incus_member.yaml
+5. templates/template_incus_cluster.yaml
+```
 
 ### 2. Generate Client Certificates
 
@@ -91,13 +93,14 @@ sudo chmod 600 /usr/share/zabbix/ssl/keys/incus-client.key
 
 1. Go to **Data collection** > **Hosts** > **Create host**
 2. Set hostname (e.g., "Incus Cluster")
-3. Link the **Incus Cluster by HTTP** template
-4. Configure host macros:
+3. Add to a host group (e.g., "Incus")
+4. Add an Agent interface (required placeholder, IP can be 127.0.0.1)
+5. Link the **Incus Cluster by HTTP** template
+6. Configure host macros:
 
 | Macro | Value |
 |-------|-------|
 | `{$INCUS.API.HOST}` | Your Incus server hostname |
-| `{$INCUS.API.PORT}` | `8443` (default) |
 | `{$INCUS.TLS.CERT}` | `incus-client.crt` |
 | `{$INCUS.TLS.KEY}` | `incus-client.key` |
 
@@ -109,21 +112,45 @@ sudo chmod 600 /usr/share/zabbix/ssl/keys/incus-client.key
 
 ## Configuration Macros
 
+### Required Macros (set on cluster host)
+
 | Macro | Default | Description |
 |-------|---------|-------------|
-| `{$INCUS.API.HOST}` | `localhost` | Incus server hostname |
-| `{$INCUS.API.PORT}` | `8443` | API port |
+| `{$INCUS.API.HOST}` | - | Incus server hostname (required) |
 | `{$INCUS.TLS.CERT}` | `incus-client.crt` | Client certificate filename |
 | `{$INCUS.TLS.KEY}` | `incus-client.key` | Client key filename |
+
+### Optional Macros
+
+| Macro | Default | Description |
+|-------|---------|-------------|
+| `{$INCUS.API.PORT}` | `8443` | API port |
+| `{$INCUS.API.SCHEME}` | `https` | Protocol scheme |
 | `{$INCUS.DATA.INTERVAL}` | `5m` | Master data collection interval |
 | `{$INCUS.STATE.INTERVAL}` | `1m` | Instance state polling interval |
 | `{$INCUS.METRICS.INTERVAL}` | `1m` | Prometheus metrics interval |
 | `{$INCUS.DISCOVERY.INTERVAL}` | `1h` | Discovery interval |
+| `{$INCUS.MAINTENANCE}` | `0` | Set to 1 to suppress triggers |
+
+### Filter Macros
+
+| Macro | Default | Description |
+|-------|---------|-------------|
 | `{$INCUS.INSTANCE.IGNORE}` | `^$` | Regex to ignore instances |
+| `{$INCUS.POOL.IGNORE}` | `^$` | Regex to ignore storage pools |
+| `{$INCUS.NETWORK.IGNORE}` | `^(lo\|docker[0-9]*\|veth.*\|br-[a-f0-9]+)$` | Regex to ignore networks |
+| `{$INCUS.IMAGE.IGNORE}` | `^$` | Regex to ignore images |
+| `{$INCUS.INTERFACE.IGNORE}` | `^lo$` | Regex to ignore network interfaces |
+
+### Threshold Macros
+
+| Macro | Default | Description |
+|-------|---------|-------------|
 | `{$INCUS.STORAGE.PUSED.WARN}` | `80` | Storage warning threshold % |
 | `{$INCUS.STORAGE.PUSED.CRIT}` | `95` | Storage critical threshold % |
+| `{$INCUS.MEMORY.PUSED.WARN}` | `90` | Memory warning threshold % |
+| `{$INCUS.MEMORY.PUSED.CRIT}` | `95` | Memory critical threshold % |
 | `{$INCUS.SNAPSHOT.MAXAGE}` | `7d` | Snapshot age warning |
-| `{$INCUS.MAINTENANCE}` | `0` | Set to 1 to suppress triggers |
 
 ## Metrics Collected
 
@@ -143,8 +170,19 @@ sudo chmod 600 /usr/share/zabbix/ssl/keys/incus-client.key
 - Snapshot count and age (system containers/VMs only)
 
 ### OCI Container Specific
-- OCI entrypoint, source image
-- No snapshot monitoring (typically rebuilt from images)
+- Limited metrics (OCI containers typically rebuilt from images)
+- No snapshot monitoring
+
+## Host Tags
+
+Discovered hosts automatically receive tags for filtering:
+
+| Host Type | Tags |
+|-----------|------|
+| Members | `incus: member`, `member: {name}` |
+| System Containers | `incus: instance`, `incus.type: system-container`, `instance: {name}`, `project: {project}` |
+| OCI Containers | `incus: instance`, `incus.type: oci-container`, `instance: {name}`, `project: {project}` |
+| Virtual Machines | `incus: instance`, `incus.type: virtual-machine`, `instance: {name}`, `project: {project}` |
 
 ## Triggers
 
@@ -152,20 +190,32 @@ sudo chmod 600 /usr/share/zabbix/ssl/keys/incus-client.key
 - Cluster member offline (High)
 - Instance error state (High)
 - Storage pool space warnings (Warning/High)
+- Memory usage warnings (Warning/High)
 - Old snapshots (Warning)
 - Network interface errors (Warning)
 
-## Upgrading from v1.x
+## Troubleshooting
 
-The v2.0 architecture is significantly different from v1.x:
+### Items show "Not supported"
 
-1. **Backup** your existing template and host configuration
-2. **Remove** the old "Incus Cluster by HTTP" template link
-3. **Import** all 5 new templates
-4. **Re-link** the new "Incus Cluster by HTTP" template
-5. **Wait** for discovery to create member and instance hosts
+Check the error message on the item. Common issues:
+- Certificate not found: Verify cert files exist in `/usr/share/zabbix/ssl/certs/` and `/usr/share/zabbix/ssl/keys/`
+- Connection refused: Ensure Incus is listening on port 8443 (`incus config set core.https_address :8443`)
+- Certificate not trusted: Add cert to Incus trust store (`incus config trust add-certificate`)
 
-Note: Historical data will not be migrated automatically.
+### Discovery not creating hosts
+
+- Check that master items are collecting data (Latest data > show raw data)
+- Verify the cluster host has the correct template linked
+- Check Zabbix server logs for discovery errors
+
+### Test connectivity manually
+
+```bash
+curl -v --cert /usr/share/zabbix/ssl/certs/incus-client.crt \
+        --key /usr/share/zabbix/ssl/keys/incus-client.key \
+        -k https://<incus-host>:8443/1.0
+```
 
 ## License
 
