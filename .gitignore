@@ -2,6 +2,7 @@
 *.crt
 *.key
 *.pem
+config.yaml
 
 # Import script with API tokens
 import_template.py

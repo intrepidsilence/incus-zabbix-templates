@@ -1,0 +1,1042 @@
+zabbix_export:
+  version: '7.4'
+  template_groups:
+    - uuid: 914ed350eab14c7982024b6b5019a870
+      name: Templates/Virtualization
+  host_groups:
+    - uuid: a7a9df76556b4e8fb088eae5e858faa1
+      name: Incus/Members
+    - uuid: 309c0cde83a747d993962a579a587afa
+      name: Incus/System Containers
+    - uuid: b184248829734f5d90d537986e7161a7
+      name: Incus/OCI Containers
+    - uuid: f458681319d942e08bf77b206c62cbb7
+      name: Incus/Virtual Machines
+  templates:
+    - uuid: 2fca3d40255f4106acc7eee5e08fb217
+      template: 'Incus Cluster by HTTP'
+      name: 'Incus Cluster by HTTP'
+      description: |
+        Main template for monitoring Incus container and VM clusters.
+
+        This template creates host prototypes for:
+        - Cluster members (linked to "Incus Cluster Member" template)
+        - Instances discovered under each member, linked to type-specific templates:
+          - System containers → "Incus System Container"
+          - OCI containers → "Incus OCI Container"
+          - Virtual machines → "Incus Virtual Machine"
+
+        Requirements:
+        - Zabbix 7.4+ (for nested host prototypes)
+        - Incus 6.0+ with REST API enabled
+        - TLS client certificate configured
+        - Network access from Zabbix server/proxy to Incus API (default port 8443)
+
+        Setup:
+        1. Import all Incus templates (this + 4 linked templates)
+        2. Generate TLS client certificate
+        3. Add certificate to Incus trust store
+        4. Copy certificates to Zabbix server
+        5. Create host and link this template
+        6. Configure macros with correct paths and host
+
+        See SETUP.md for detailed instructions.
+      vendor:
+        name: Community
+        version: 2.0.0
+      groups:
+        - name: Templates/Virtualization
+      items:
+        # ============================================================
+        # Master HTTP Agent Items - Fetch raw data from Incus API
+        # ============================================================
+        - uuid: ec27812904b74349abc9684682f0a41b
+          name: 'Incus: Get server info'
+          type: HTTP_AGENT
+          key: incus.api.server
+          delay: '{$INCUS.DATA.INTERVAL}'
+          history: '0'
+          value_type: TEXT
+          description: 'Raw JSON response from /1.0 endpoint'
+          timeout: 30s
+          url: '{$INCUS.API.SCHEME}://{$INCUS.API.HOST}:{$INCUS.API.PORT}/1.0'
+          ssl_cert_file: '{$INCUS.TLS.CERT}'
+          ssl_key_file: '{$INCUS.TLS.KEY}'
+          tags:
+            - tag: component
+              value: api
+            - tag: incus
+              value: raw
+        - uuid: 74894ca542844bfeb7aba0110464da78
+          name: 'Incus: Get cluster info'
+          type: HTTP_AGENT
+          key: incus.api.cluster
+          delay: '{$INCUS.DATA.INTERVAL}'
+          history: '0'
+          value_type: TEXT
+          description: 'Raw JSON response from /1.0/cluster endpoint'
+          timeout: 30s
+          url: '{$INCUS.API.SCHEME}://{$INCUS.API.HOST}:{$INCUS.API.PORT}/1.0/cluster'
+          ssl_cert_file: '{$INCUS.TLS.CERT}'
+          ssl_key_file: '{$INCUS.TLS.KEY}'
+          tags:
+            - tag: component
+              value: api
+            - tag: incus
+              value: raw
+        - uuid: d9e5b603ce7c4462998276110c4fce11
+          name: 'Incus: Get cluster members'
+          type: HTTP_AGENT
+          key: incus.api.cluster.members
+          delay: '{$INCUS.DATA.INTERVAL}'
+          history: '0'
+          value_type: TEXT
+          description: 'Raw JSON response from /1.0/cluster/members with recursion'
+          timeout: 30s
+          url: '{$INCUS.API.SCHEME}://{$INCUS.API.HOST}:{$INCUS.API.PORT}/1.0/cluster/members'
+          query_fields:
+            - name: recursion
+              value: '1'
+          ssl_cert_file: '{$INCUS.TLS.CERT}'
+          ssl_key_file: '{$INCUS.TLS.KEY}'
+          tags:
+            - tag: component
+              value: api
+            - tag: incus
+              value: raw
+        - uuid: 7e026d30dfcb410a8a89f9188e088d59
+          name: 'Incus: API health check'
+          type: HTTP_AGENT
+          key: incus.api.health
+          delay: '{$INCUS.HEALTH.INTERVAL}'
+          history: 7d
+          value_type: TEXT
+          description: 'Health check for Incus API connectivity'
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - $.metadata.auth
+              error_handler: CUSTOM_VALUE
+              error_handler_params: error
+          timeout: 15s
+          url: '{$INCUS.API.SCHEME}://{$INCUS.API.HOST}:{$INCUS.API.PORT}/1.0'
+          ssl_cert_file: '{$INCUS.TLS.CERT}'
+          ssl_key_file: '{$INCUS.TLS.KEY}'
+          tags:
+            - tag: component
+              value: api
+            - tag: incus
+              value: health
+          triggers:
+            - uuid: 034ea365366e4f65a687da86f704b0ee
+              expression: 'last(/Incus Cluster by HTTP/incus.api.health)="error" and {$INCUS.MAINTENANCE}=0'
+              name: 'Incus: API authentication failed'
+              priority: HIGH
+              description: 'Incus API returned authentication error - check TLS certificates'
+              tags:
+                - tag: scope
+                  value: security
+            - uuid: 0e60dd9580ea4592b2298668438681a1
+              expression: 'nodata(/Incus Cluster by HTTP/incus.api.health,5m)=1 and {$INCUS.MAINTENANCE}=0'
+              name: 'Incus: API unreachable'
+              priority: DISASTER
+              description: 'Cannot connect to Incus API for 5 minutes'
+              tags:
+                - tag: scope
+                  value: availability
+        - uuid: aad0997de0944888a9a3c5e2a7eed760
+          name: 'Incus: Get instances'
+          type: HTTP_AGENT
+          key: incus.api.instances
+          delay: '{$INCUS.DATA.INTERVAL}'
+          history: '0'
+          value_type: TEXT
+          description: 'Raw JSON response from /1.0/instances with full recursion across all projects'
+          timeout: 60s
+          url: '{$INCUS.API.SCHEME}://{$INCUS.API.HOST}:{$INCUS.API.PORT}/1.0/instances'
+          query_fields:
+            - name: recursion
+              value: '2'
+            - name: all-projects
+              value: 'true'
+          ssl_cert_file: '{$INCUS.TLS.CERT}'
+          ssl_key_file: '{$INCUS.TLS.KEY}'
+          tags:
+            - tag: component
+              value: api
+            - tag: incus
+              value: raw
+        - uuid: 5af1f09a635943338e9ae3a081fc97e0
+          name: 'Incus: Get storage pools'
+          type: HTTP_AGENT
+          key: incus.api.storage_pools
+          delay: '{$INCUS.DATA.INTERVAL}'
+          history: '0'
+          value_type: TEXT
+          description: 'Raw JSON response from /1.0/storage-pools with recursion'
+          timeout: 60s
+          url: '{$INCUS.API.SCHEME}://{$INCUS.API.HOST}:{$INCUS.API.PORT}/1.0/storage-pools'
+          query_fields:
+            - name: recursion
+              value: '2'
+          ssl_cert_file: '{$INCUS.TLS.CERT}'
+          ssl_key_file: '{$INCUS.TLS.KEY}'
+          tags:
+            - tag: component
+              value: api
+            - tag: incus
+              value: raw
+        - uuid: b880ff68f4024101b1b9fc2dbb439a5d
+          name: 'Incus: Get networks'
+          type: HTTP_AGENT
+          key: incus.api.networks
+          delay: '{$INCUS.DATA.INTERVAL}'
+          history: '0'
+          value_type: TEXT
+          description: 'Raw JSON response from /1.0/networks with recursion'
+          timeout: 30s
+          url: '{$INCUS.API.SCHEME}://{$INCUS.API.HOST}:{$INCUS.API.PORT}/1.0/networks'
+          query_fields:
+            - name: recursion
+              value: '1'
+            - name: all-projects
+              value: 'true'
+          ssl_cert_file: '{$INCUS.TLS.CERT}'
+          ssl_key_file: '{$INCUS.TLS.KEY}'
+          tags:
+            - tag: component
+              value: api
+            - tag: incus
+              value: raw
+        - uuid: 7e74829fe736452dbb7b0812c8f49baa
+          name: 'Incus: Get images'
+          type: HTTP_AGENT
+          key: incus.api.images
+          delay: '{$INCUS.DATA.INTERVAL}'
+          history: '0'
+          value_type: TEXT
+          description: 'Raw JSON response from /1.0/images with recursion'
+          timeout: 30s
+          url: '{$INCUS.API.SCHEME}://{$INCUS.API.HOST}:{$INCUS.API.PORT}/1.0/images'
+          query_fields:
+            - name: recursion
+              value: '1'
+          ssl_cert_file: '{$INCUS.TLS.CERT}'
+          ssl_key_file: '{$INCUS.TLS.KEY}'
+          tags:
+            - tag: component
+              value: api
+            - tag: incus
+              value: raw
+        - uuid: 05b4e9026a084cc388c2cc8aaa7b0a18
+          name: 'Incus: Get warnings'
+          type: HTTP_AGENT
+          key: incus.api.warnings
+          delay: '{$INCUS.DATA.INTERVAL}'
+          history: '0'
+          value_type: TEXT
+          description: 'Raw JSON response from /1.0/warnings'
+          timeout: 30s
+          url: '{$INCUS.API.SCHEME}://{$INCUS.API.HOST}:{$INCUS.API.PORT}/1.0/warnings'
+          query_fields:
+            - name: recursion
+              value: '1'
+          ssl_cert_file: '{$INCUS.TLS.CERT}'
+          ssl_key_file: '{$INCUS.TLS.KEY}'
+          tags:
+            - tag: component
+              value: api
+            - tag: incus
+              value: raw
+        # ============================================================
+        # Dependent Items - Cluster-level metrics parsed from master items
+        # ============================================================
+        - uuid: ee7fbab02af04669ad0f79260957fcdb
+          name: 'Incus: Cluster enabled'
+          type: DEPENDENT
+          key: incus.cluster.enabled
+          history: 7d
+          description: 'Whether clustering is enabled (1=yes, 0=no)'
+          valuemap:
+            name: 'Incus Boolean'
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - $.metadata.enabled
+            - type: BOOL_TO_DECIMAL
+          master_item:
+            key: incus.api.cluster
+          tags:
+            - tag: component
+              value: cluster
+            - tag: incus
+              value: info
+        - uuid: c39f35fc3c1642299f188708db68faca
+          name: 'Incus: Cluster member count'
+          type: DEPENDENT
+          key: incus.cluster.members.count
+          history: 7d
+          description: 'Total number of cluster members'
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - $.metadata.length()
+              error_handler: CUSTOM_VALUE
+              error_handler_params: '0'
+          master_item:
+            key: incus.api.cluster.members
+          tags:
+            - tag: component
+              value: cluster
+            - tag: incus
+              value: members
+        - uuid: 4f25406858c7436d8a65a3574760f3ce
+          name: 'Incus: Cluster members online'
+          type: DEPENDENT
+          key: incus.cluster.members.online
+          history: 7d
+          description: 'Number of online cluster members'
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - '$.metadata[?(@.status=="Online")].length()'
+              error_handler: CUSTOM_VALUE
+              error_handler_params: '0'
+          master_item:
+            key: incus.api.cluster.members
+          tags:
+            - tag: component
+              value: cluster
+            - tag: incus
+              value: members
+        - uuid: d1eac5e6d44142d2a0226d5a895bee51
+          name: 'Incus: Total instances'
+          type: DEPENDENT
+          key: incus.instances.total
+          history: 7d
+          description: 'Total number of instances across all projects'
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - $.metadata.length()
+              error_handler: CUSTOM_VALUE
+              error_handler_params: '0'
+          master_item:
+            key: incus.api.instances
+          tags:
+            - tag: component
+              value: instances
+            - tag: incus
+              value: count
+        - uuid: e57f48439dc242f887cd071059754306
+          name: 'Incus: Running instances'
+          type: DEPENDENT
+          key: incus.instances.running
+          history: 7d
+          description: 'Number of running instances'
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - '$.metadata[?(@.status=="Running")].length()'
+              error_handler: CUSTOM_VALUE
+              error_handler_params: '0'
+          master_item:
+            key: incus.api.instances
+          tags:
+            - tag: component
+              value: instances
+            - tag: incus
+              value: count
+        - uuid: d107c9be263745f6ae0b4a08a9f12b31
+          name: 'Incus: Stopped instances'
+          type: DEPENDENT
+          key: incus.instances.stopped
+          history: 7d
+          description: 'Number of stopped instances'
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - '$.metadata[?(@.status=="Stopped")].length()'
+              error_handler: CUSTOM_VALUE
+              error_handler_params: '0'
+          master_item:
+            key: incus.api.instances
+          tags:
+            - tag: component
+              value: instances
+            - tag: incus
+              value: count
+        - uuid: d3ea820faeee4421bb012443064a2d5a
+          name: 'Incus: Total containers'
+          type: DEPENDENT
+          key: incus.containers.total
+          history: 7d
+          description: 'Total number of containers (system + OCI)'
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - '$.metadata[?(@.type=="container")].length()'
+              error_handler: CUSTOM_VALUE
+              error_handler_params: '0'
+          master_item:
+            key: incus.api.instances
+          tags:
+            - tag: component
+              value: instances
+            - tag: incus
+              value: count
+        - uuid: 7b3544375d324dfe838194dd69ed3522
+          name: 'Incus: Total system containers'
+          type: DEPENDENT
+          key: incus.containers.system.total
+          history: 7d
+          description: 'Total number of system containers'
+          preprocessing:
+            - type: JAVASCRIPT
+              parameters:
+                - |
+                  var data = JSON.parse(value);
+                  var instances = data.metadata || [];
+                  var count = 0;
+                  for (var i = 0; i < instances.length; i++) {
+                    var inst = instances[i];
+                    if (inst.type === "container") {
+                      var isOci = inst.config && inst.config["volatile.container.oci"] === "true";
+                      if (!isOci) count++;
+                    }
+                  }
+                  return count;
+          master_item:
+            key: incus.api.instances
+          tags:
+            - tag: component
+              value: instances
+            - tag: incus
+              value: count
+        - uuid: a84b02b94830449b9395429e160a3d6c
+          name: 'Incus: Total OCI containers'
+          type: DEPENDENT
+          key: incus.containers.oci.total
+          history: 7d
+          description: 'Total number of OCI/application containers'
+          preprocessing:
+            - type: JAVASCRIPT
+              parameters:
+                - |
+                  var data = JSON.parse(value);
+                  var instances = data.metadata || [];
+                  var count = 0;
+                  for (var i = 0; i < instances.length; i++) {
+                    var inst = instances[i];
+                    if (inst.type === "container") {
+                      var isOci = inst.config && inst.config["volatile.container.oci"] === "true";
+                      if (isOci) count++;
+                    }
+                  }
+                  return count;
+          master_item:
+            key: incus.api.instances
+          tags:
+            - tag: component
+              value: instances
+            - tag: incus
+              value: count
+        - uuid: f5c81f464ec04dd2a9868be81958c175
+          name: 'Incus: Total VMs'
+          type: DEPENDENT
+          key: incus.vms.total
+          history: 7d
+          description: 'Total number of virtual machines'
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - '$.metadata[?(@.type=="virtual-machine")].length()'
+              error_handler: CUSTOM_VALUE
+              error_handler_params: '0'
+          master_item:
+            key: incus.api.instances
+          tags:
+            - tag: component
+              value: instances
+            - tag: incus
+              value: count
+        - uuid: c045fc0185114a15ba01d8908bdce46c
+          name: 'Incus: Warning count'
+          type: DEPENDENT
+          key: incus.warnings.count
+          history: 7d
+          description: 'Number of active warnings (excludes acknowledged)'
+          preprocessing:
+            - type: JAVASCRIPT
+              parameters:
+                - |
+                  var data = JSON.parse(value);
+                  var warnings = data.metadata || [];
+                  var active = warnings.filter(function(w) {
+                    return w.status === "new";
+                  });
+                  return active.length;
+          master_item:
+            key: incus.api.warnings
+          tags:
+            - tag: component
+              value: warnings
+            - tag: incus
+              value: count
+          triggers:
+            - uuid: 8d8e24c6b1b44f1d8187d2e385f20ccc
+              expression: 'last(/Incus Cluster by HTTP/incus.warnings.count)>0 and {$INCUS.MAINTENANCE}=0'
+              name: 'Incus: Cluster has active warnings ({ITEM.LASTVALUE})'
+              priority: WARNING
+              description: 'Incus cluster has active warnings that may require attention'
+              tags:
+                - tag: scope
+                  value: notice
+        - uuid: 410b39f1edd34f07b2923a6c3522ad8e
+          name: 'Incus: API version'
+          type: DEPENDENT
+          key: incus.server.api_version
+          history: 7d
+          value_type: TEXT
+          description: 'Incus API version'
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - $.metadata.api_version
+          master_item:
+            key: incus.api.server
+          tags:
+            - tag: component
+              value: server
+            - tag: incus
+              value: info
+        - uuid: 3280b6c84c94498b9b789c0c5ce4aa52
+          name: 'Incus: Server version'
+          type: DEPENDENT
+          key: incus.server.version
+          history: 7d
+          value_type: TEXT
+          description: 'Incus server version'
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - $.metadata.environment.server_version
+          master_item:
+            key: incus.api.server
+          tags:
+            - tag: component
+              value: server
+            - tag: incus
+              value: info
+          triggers:
+            - uuid: da19046a7b0f4283a529a86a2af09bf7
+              expression: 'change(/Incus Cluster by HTTP/incus.server.version)<>0'
+              name: 'Incus: Server version changed to {ITEM.LASTVALUE}'
+              priority: INFO
+              description: 'Incus server was upgraded'
+              manual_close: 'YES'
+              tags:
+                - tag: scope
+                  value: notice
+        - uuid: 18b4f0698b4a4cb69bb10455fa8397a2
+          name: 'Incus: Storage pool count'
+          type: DEPENDENT
+          key: incus.pools.count
+          history: 7d
+          description: 'Number of storage pools'
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - $.metadata.length()
+              error_handler: CUSTOM_VALUE
+              error_handler_params: '0'
+          master_item:
+            key: incus.api.storage_pools
+          tags:
+            - tag: component
+              value: storage
+            - tag: incus
+              value: count
+        - uuid: cf374e949725460fa77c098a462a15f7
+          name: 'Incus: Network count'
+          type: DEPENDENT
+          key: incus.networks.count
+          history: 7d
+          description: 'Number of networks'
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - $.metadata.length()
+              error_handler: CUSTOM_VALUE
+              error_handler_params: '0'
+          master_item:
+            key: incus.api.networks
+          tags:
+            - tag: component
+              value: network
+            - tag: incus
+              value: count
+        - uuid: fb11e1a059d44672aab09ccfa018a3a3
+          name: 'Incus: Image count'
+          type: DEPENDENT
+          key: incus.images.count
+          history: 7d
+          description: 'Number of cached images'
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - $.metadata.length()
+              error_handler: CUSTOM_VALUE
+              error_handler_params: '0'
+          master_item:
+            key: incus.api.images
+          tags:
+            - tag: component
+              value: images
+            - tag: incus
+              value: count
+      # ============================================================
+      # Discovery Rules
+      # ============================================================
+      discovery_rules:
+        # ------------------------------------------------------------
+        # Cluster Members Discovery - Creates Host Prototypes
+        # ------------------------------------------------------------
+        - uuid: 8eaaa8cac0374ee7835f950bc3eaf825
+          name: 'Incus: Cluster members discovery'
+          type: DEPENDENT
+          key: incus.discovery.cluster.members
+          description: 'Discovers all cluster members and creates host prototypes'
+          host_prototypes:
+            - uuid: e72b19a05c8b426dbdc9b37cb55b17ce
+              host: 'incus-member-{#MEMBER.NAME}'
+              name: 'Incus Member: {#MEMBER.NAME}'
+              group_links:
+                - group:
+                    name: Incus/Members
+              group_prototypes:
+                - name: 'Incus/Members/{#MEMBER.NAME}'
+              templates:
+                - name: 'Incus Cluster Member'
+              macros:
+                - macro: '{$INCUS.MEMBER.NAME}'
+                  value: '{#MEMBER.NAME}'
+                  description: 'Cluster member name (from discovery)'
+                - macro: '{$INCUS.MEMBER.ADDRESS}'
+                  value: '{#MEMBER.ADDRESS}'
+                  description: 'Cluster member address (from discovery)'
+              custom_interfaces: 'YES'
+              interfaces:
+                - ip: '{#MEMBER.ADDRESS}'
+                  port: '{$INCUS.API.PORT}'
+              tags:
+                - tag: incus
+                  value: member
+                - tag: member
+                  value: '{#MEMBER.NAME}'
+          master_item:
+            key: incus.api.cluster.members
+          lld_macro_paths:
+            - lld_macro: '{#MEMBER.ADDRESS}'
+              path: $.address
+            - lld_macro: '{#MEMBER.NAME}'
+              path: $.server_name
+            - lld_macro: '{#MEMBER.STATUS}'
+              path: $.status
+            - lld_macro: '{#MEMBER.URL}'
+              path: $.url
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - $.metadata
+            - type: JAVASCRIPT
+              parameters:
+                - |
+                  var data = JSON.parse(value);
+                  var result = [];
+                  for (var i = 0; i < data.length; i++) {
+                    var member = data[i];
+                    // Extract address from URL (remove https:// and port)
+                    var url = member.url || '';
+                    var address = url.replace(/^https?:\/\//, '').replace(/:\d+$/, '');
+                    result.push({
+                      "server_name": member.server_name,
+                      "url": member.url,
+                      "address": address,
+                      "status": member.status
+                    });
+                  }
+                  return JSON.stringify(result);
+        # ------------------------------------------------------------
+        # Storage Pools Discovery - Item Prototypes (not host prototypes)
+        # ------------------------------------------------------------
+        - uuid: 618a67d4263548c682906404b0aab65d
+          name: 'Incus: Storage pools discovery'
+          type: DEPENDENT
+          key: incus.discovery.storage_pools
+          filter:
+            evaltype: AND
+            conditions:
+              - macro: '{#POOL.NAME}'
+                value: '{$INCUS.POOL.IGNORE}'
+                operator: NOT_MATCHES_REGEX
+          description: 'Discovers all storage pools'
+          item_prototypes:
+            - uuid: 904395c5d06d43cb9b195add4b3019c3
+              name: 'Incus: Storage pool [{#POOL.NAME}] status'
+              type: DEPENDENT
+              key: 'incus.pool.status[{#POOL.NAME}]'
+              history: 7d
+              value_type: TEXT
+              description: 'Storage pool status'
+              preprocessing:
+                - type: JSONPATH
+                  parameters:
+                    - '$.metadata[?(@.name=="{#POOL.NAME}")].status.first()'
+              master_item:
+                key: incus.api.storage_pools
+              tags:
+                - tag: component
+                  value: storage
+                - tag: pool
+                  value: '{#POOL.NAME}'
+            - uuid: f5288cd663d04a6daaef59b179f90d50
+              name: 'Incus: Storage pool [{#POOL.NAME}] space used'
+              type: DEPENDENT
+              key: 'incus.pool.space.used[{#POOL.NAME}]'
+              history: 7d
+              units: B
+              description: 'Storage pool space used in bytes'
+              preprocessing:
+                - type: JSONPATH
+                  parameters:
+                    - '$.metadata[?(@.name=="{#POOL.NAME}")].resources.space.used.first()'
+                  error_handler: CUSTOM_VALUE
+                  error_handler_params: '0'
+              master_item:
+                key: incus.api.storage_pools
+              tags:
+                - tag: component
+                  value: storage
+                - tag: pool
+                  value: '{#POOL.NAME}'
+            - uuid: cf3958d73b614de69e856af383c6069e
+              name: 'Incus: Storage pool [{#POOL.NAME}] space total'
+              type: DEPENDENT
+              key: 'incus.pool.space.total[{#POOL.NAME}]'
+              history: 7d
+              units: B
+              description: 'Storage pool total space in bytes'
+              preprocessing:
+                - type: JSONPATH
+                  parameters:
+                    - '$.metadata[?(@.name=="{#POOL.NAME}")].resources.space.total.first()'
+                  error_handler: CUSTOM_VALUE
+                  error_handler_params: '0'
+              master_item:
+                key: incus.api.storage_pools
+              tags:
+                - tag: component
+                  value: storage
+                - tag: pool
+                  value: '{#POOL.NAME}'
+            - uuid: fd76e9dc84cc47ce8e7daff290a6df31
+              name: 'Incus: Storage pool [{#POOL.NAME}] space % used'
+              type: CALCULATED
+              key: 'incus.pool.space.pused[{#POOL.NAME}]'
+              delay: '{$INCUS.DATA.INTERVAL}'
+              history: 7d
+              value_type: FLOAT
+              units: '%'
+              params: '100*last(//incus.pool.space.used[{#POOL.NAME}])/(last(//incus.pool.space.total[{#POOL.NAME}])+1)'
+              description: 'Storage pool usage percentage'
+              tags:
+                - tag: component
+                  value: storage
+                - tag: pool
+                  value: '{#POOL.NAME}'
+          trigger_prototypes:
+            - uuid: 7c5bec42e2dc4d2d864c4cdc75e34317
+              expression: 'last(/Incus Cluster by HTTP/incus.pool.space.pused[{#POOL.NAME}])>{$INCUS.STORAGE.PUSED.WARN} and {$INCUS.MAINTENANCE}=0'
+              name: 'Incus: Storage pool [{#POOL.NAME}] space low (>{$INCUS.STORAGE.PUSED.WARN}%)'
+              priority: WARNING
+              description: 'Storage pool usage is above warning threshold'
+              tags:
+                - tag: pool
+                  value: '{#POOL.NAME}'
+                - tag: scope
+                  value: capacity
+            - uuid: 188c1cee0cc34ae9bcd00f3bfa9ee334
+              expression: 'last(/Incus Cluster by HTTP/incus.pool.space.pused[{#POOL.NAME}])>{$INCUS.STORAGE.PUSED.CRIT} and {$INCUS.MAINTENANCE}=0'
+              name: 'Incus: Storage pool [{#POOL.NAME}] space critical (>{$INCUS.STORAGE.PUSED.CRIT}%)'
+              priority: HIGH
+              description: 'Storage pool usage is above critical threshold'
+              tags:
+                - tag: pool
+                  value: '{#POOL.NAME}'
+                - tag: scope
+                  value: capacity
+          master_item:
+            key: incus.api.storage_pools
+          lld_macro_paths:
+            - lld_macro: '{#POOL.NAME}'
+              path: $.name
+            - lld_macro: '{#POOL.DRIVER}'
+              path: $.driver
+            - lld_macro: '{#POOL.STATUS}'
+              path: $.status
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - $.metadata
+        # ------------------------------------------------------------
+        # Networks Discovery - Item Prototypes (not host prototypes)
+        # ------------------------------------------------------------
+        - uuid: 595f06c4bf9949ceb787e00a2a96595c
+          name: 'Incus: Networks discovery'
+          type: DEPENDENT
+          key: incus.discovery.networks
+          filter:
+            evaltype: AND
+            conditions:
+              - macro: '{#NETWORK.NAME}'
+                value: '{$INCUS.NETWORK.IGNORE}'
+                operator: NOT_MATCHES_REGEX
+              - macro: '{#NETWORK.MANAGED}'
+                value: 'true'
+          description: 'Discovers managed networks'
+          item_prototypes:
+            - uuid: db11c59416e44922b09182964039b9a7
+              name: 'Incus: Network [{#NETWORK.NAME}] status'
+              type: DEPENDENT
+              key: 'incus.network.status[{#NETWORK.NAME}]'
+              history: 7d
+              value_type: TEXT
+              description: 'Network status'
+              preprocessing:
+                - type: JSONPATH
+                  parameters:
+                    - '$.metadata[?(@.name=="{#NETWORK.NAME}")].status.first()'
+              master_item:
+                key: incus.api.networks
+              tags:
+                - tag: component
+                  value: network
+                - tag: network
+                  value: '{#NETWORK.NAME}'
+          trigger_prototypes:
+            - uuid: 8ad376b0ad2e4fba88c0471feb260bab
+              expression: 'last(/Incus Cluster by HTTP/incus.network.status[{#NETWORK.NAME}])<>"Created" and {$INCUS.MAINTENANCE}=0'
+              name: 'Incus: Network [{#NETWORK.NAME}] is unavailable'
+              priority: HIGH
+              description: 'Network is not in Created state'
+              tags:
+                - tag: network
+                  value: '{#NETWORK.NAME}'
+                - tag: scope
+                  value: availability
+          master_item:
+            key: incus.api.networks
+          lld_macro_paths:
+            - lld_macro: '{#NETWORK.NAME}'
+              path: $.name
+            - lld_macro: '{#NETWORK.TYPE}'
+              path: $.type
+            - lld_macro: '{#NETWORK.MANAGED}'
+              path: $.managed
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - $.metadata
+            - type: JAVASCRIPT
+              parameters:
+                - |
+                  var networks = JSON.parse(value);
+                  var result = [];
+                  for (var i = 0; i < networks.length; i++) {
+                    var net = networks[i];
+                    result.push({
+                      "name": net.name,
+                      "type": net.type || "",
+                      "managed": net.managed ? "true" : "false"
+                    });
+                  }
+                  return JSON.stringify(result);
+        # ------------------------------------------------------------
+        # Images Discovery - Item Prototypes (not host prototypes)
+        # ------------------------------------------------------------
+        - uuid: 2cf384d286d84709bbbed5a6f70a7a7c
+          name: 'Incus: Images discovery'
+          type: DEPENDENT
+          key: incus.discovery.images
+          filter:
+            evaltype: AND
+            conditions:
+              - macro: '{#IMAGE.FINGERPRINT}'
+                value: '{$INCUS.IMAGE.IGNORE}'
+                operator: NOT_MATCHES_REGEX
+          description: 'Discovers cached images'
+          item_prototypes:
+            - uuid: 26b169e35b1f4457a8b9480c8b45ffec
+              name: 'Incus: Image [{#IMAGE.ALIAS}] size'
+              type: DEPENDENT
+              key: 'incus.image.size[{#IMAGE.FINGERPRINT.SHORT}]'
+              history: 7d
+              units: B
+              description: 'Image size in bytes'
+              preprocessing:
+                - type: JSONPATH
+                  parameters:
+                    - '$.metadata[?(@.fingerprint=~"^{#IMAGE.FINGERPRINT.SHORT}")].size.first()'
+                  error_handler: CUSTOM_VALUE
+                  error_handler_params: '0'
+              master_item:
+                key: incus.api.images
+              tags:
+                - tag: component
+                  value: image
+                - tag: image
+                  value: '{#IMAGE.FINGERPRINT.SHORT}'
+          master_item:
+            key: incus.api.images
+          lld_macro_paths:
+            - lld_macro: '{#IMAGE.ALIAS}'
+              path: $.alias
+            - lld_macro: '{#IMAGE.FINGERPRINT.SHORT}'
+              path: $.fingerprint_short
+            - lld_macro: '{#IMAGE.FINGERPRINT}'
+              path: $.fingerprint
+            - lld_macro: '{#IMAGE.TYPE}'
+              path: $.type
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - $.metadata
+            - type: JAVASCRIPT
+              parameters:
+                - |
+                  var images = JSON.parse(value);
+                  var result = [];
+                  for (var i = 0; i < images.length; i++) {
+                    var img = images[i];
+                    var alias = "";
+                    if (img.aliases && img.aliases.length > 0) {
+                      alias = img.aliases[0].name;
+                    } else {
+                      alias = img.fingerprint.substring(0, 12);
+                    }
+                    result.push({
+                      "fingerprint": img.fingerprint,
+                      "fingerprint_short": img.fingerprint.substring(0, 12),
+                      "alias": alias,
+                      "type": img.type || "container"
+                    });
+                  }
+                  return JSON.stringify(result);
+      # ============================================================
+      # Macros
+      # ============================================================
+      macros:
+        - macro: '{$INCUS.API.HOST}'
+          value: localhost
+          description: 'Incus server hostname or IP (cluster entry point)'
+        - macro: '{$INCUS.API.PORT}'
+          value: '8443'
+          description: 'Incus API port'
+        - macro: '{$INCUS.API.SCHEME}'
+          value: https
+          description: 'Protocol scheme (https recommended)'
+        - macro: '{$INCUS.TLS.CERT}'
+          value: incus-client.crt
+          description: 'TLS client certificate filename'
+        - macro: '{$INCUS.TLS.KEY}'
+          value: incus-client.key
+          description: 'TLS client private key filename'
+        - macro: '{$INCUS.DATA.INTERVAL}'
+          value: 5m
+          description: 'Master data collection interval'
+        - macro: '{$INCUS.DISCOVERY.INTERVAL}'
+          value: 1h
+          description: 'Discovery interval for new resources'
+        - macro: '{$INCUS.HEALTH.INTERVAL}'
+          value: 30s
+          description: 'API health check interval'
+        - macro: '{$INCUS.STATE.INTERVAL}'
+          value: 1m
+          description: 'Instance state polling interval'
+        - macro: '{$INCUS.METRICS.INTERVAL}'
+          value: 1m
+          description: 'Prometheus metrics polling interval'
+        - macro: '{$INCUS.MAINTENANCE}'
+          value: '0'
+          description: 'Set to 1 to suppress all triggers during maintenance'
+        - macro: '{$INCUS.INSTANCE.IGNORE}'
+          value: '^$'
+          description: 'Regex pattern to ignore instances (empty = none)'
+        - macro: '{$INCUS.POOL.IGNORE}'
+          value: '^$'
+          description: 'Regex pattern to ignore storage pools'
+        - macro: '{$INCUS.NETWORK.IGNORE}'
+          value: '^(lo|docker[0-9]*|veth.*|br-[a-f0-9]+)$'
+          description: 'Regex pattern to ignore networks'
+        - macro: '{$INCUS.IMAGE.IGNORE}'
+          value: '^$'
+          description: 'Regex pattern to ignore images'
+        - macro: '{$INCUS.INTERFACE.IGNORE}'
+          value: ^(lo)$
+          description: 'Regex pattern to ignore network interfaces'
+        - macro: '{$INCUS.STORAGE.PUSED.WARN}'
+          value: '80'
+          description: 'Storage pool % used warning threshold'
+        - macro: '{$INCUS.STORAGE.PUSED.CRIT}'
+          value: '95'
+          description: 'Storage pool % used critical threshold'
+        - macro: '{$INCUS.MEMORY.PUSED.WARN}'
+          value: '80'
+          description: 'Instance memory % used warning threshold'
+        - macro: '{$INCUS.MEMORY.PUSED.CRIT}'
+          value: '95'
+          description: 'Instance memory % used critical threshold'
+        - macro: '{$INCUS.SNAPSHOT.MAXAGE}'
+          value: 7d
+          description: 'Maximum snapshot age before warning'
+        - macro: '{$INCUS.INSTANCE.TRACK_CHANGES}'
+          value: '1'
+          description: 'Set to 0 to disable instance state change events'
+      # ============================================================
+      # Value Maps
+      # ============================================================
+      valuemaps:
+        - uuid: 36819365198641f69611df73663a9aef
+          name: 'Incus Boolean'
+          mappings:
+            - value: '0'
+              newvalue: 'No'
+            - value: '1'
+              newvalue: 'Yes'
+        - uuid: 4b7683a674cd4306a833d450a7194ae1
+          name: 'Incus Instance Status'
+          mappings:
+            - value: '100'
+              newvalue: 'Operation created'
+            - value: '101'
+              newvalue: Started
+            - value: '102'
+              newvalue: Stopped
+            - value: '103'
+              newvalue: Running
+            - value: '110'
+              newvalue: Frozen
+            - value: '112'
+              newvalue: Error
+        - uuid: 53b0199a239e439782be2df978c1d940
+          name: 'Incus Member Status'
+          mappings:
+            - value: Online
+              newvalue: Online
+            - value: Offline
+              newvalue: Offline
+            - value: Evacuated
+              newvalue: Evacuated
+            - value: Blocked
+              newvalue: Blocked

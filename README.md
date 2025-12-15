@@ -1,74 +1,111 @@
-# Zabbix Template for Incus
+# Zabbix Templates for Incus
 
-A comprehensive Zabbix 7.x template for monitoring Incus container and VM clusters using the REST API and Prometheus metrics.
+A comprehensive Zabbix 7.4+ template suite for monitoring Incus container and VM clusters using the REST API and Prometheus metrics.
+
+## Architecture
+
+This template suite uses a **VMware-style host prototype architecture** where discovered entities become separate Zabbix hosts:
+
+```
+Manual Host: "Incus Cluster"
+  └── Incus Cluster by HTTP (main template)
+        ├── Cluster-level monitoring (totals, warnings, storage, networks)
+        └── Discovers cluster members → creates member hosts
+              └── Each member discovers instances → creates instance hosts
+```
+
+### Templates
+
+| Template | Purpose | Created By |
+|----------|---------|------------|
+| **Incus Cluster by HTTP** | Main entry point, cluster metrics, member discovery | Manual link |
+| **Incus Cluster Member** | Per-node daemon health, instance discovery | Host prototype |
+| **Incus System Container** | Full Linux container monitoring | Host prototype |
+| **Incus OCI Container** | Docker-style app container monitoring | Host prototype |
+| **Incus Virtual Machine** | QEMU/KVM VM monitoring | Host prototype |
+
+### Auto-Created Host Groups
+
+- `Incus/Members` - All cluster members
+- `Incus/System Containers` - All system containers
+- `Incus/OCI Containers` - All OCI/app containers
+- `Incus/Virtual Machines` - All VMs
+- `Incus/Projects/{project}` - Instances by project
+- `Incus/Members/{member}` - Instances on each member
 
 ## Features
 
-- **Cluster Monitoring**: Monitor cluster health, member status, and failover
-- **Instance Monitoring**: Track containers and VMs including CPU, memory, disk, and network metrics
-- **Storage Pool Monitoring**: Monitor storage pool usage and status
-- **Network Monitoring**: Track managed network status
-- **Image Management**: Monitor available images
-- **Project Tracking**: Discover and monitor Incus projects
-- **Warning Alerts**: Track active Incus warnings
+- **Cluster Monitoring**: Member status, online count, warnings
+- **Instance Monitoring**: CPU, memory, disk, network metrics per container/VM
+- **Three Instance Types**: System containers, OCI containers, and VMs with type-specific monitoring
+- **Storage Pool Monitoring**: Usage and status
+- **Network Monitoring**: Managed network status
+- **Snapshot Tracking**: Count and age (system containers and VMs)
+- **Daemon Health**: Prometheus metrics per cluster member
 
 ## Requirements
 
-- Zabbix Server 7.0 or later
-- Incus server with REST API enabled
+- Zabbix Server 7.4 or later (required for nested host prototypes)
+- Incus server 6.0+ with REST API enabled
 - TLS client certificate for API authentication
 
 ## Installation
 
-### 1. Generate Client Certificates
+### 1. Import Templates
 
-On your Incus server, generate a client certificate for Zabbix:
+Import all template files in order:
+
+1. `templates/template_incus_cluster.yaml` (main template)
+2. `templates/template_incus_member.yaml`
+3. `templates/template_incus_system_container.yaml`
+4. `templates/template_incus_oci_container.yaml`
+5. `templates/template_incus_virtual_machine.yaml`
+
+### 2. Generate Client Certificates
 
 ```bash
 # Generate client certificate
-incus remote generate-certificate zabbix
+openssl genrsa -out client.key 4096
+openssl req -new -key client.key -out client.csr -subj "/CN=zabbix-monitoring"
+openssl x509 -req -days 3650 -in client.csr -signkey client.key -out client.crt
+rm client.csr
 
-# Or use openssl
-openssl req -x509 -newkey ec -pkeyopt ec_paramgen_curve:secp384r1 \
-  -sha384 -keyout client.key -nodes -out client.crt -days 3650 \
-  -subj "/CN=zabbix-monitoring"
-
-# Add the certificate to Incus trust store
-incus config trust add client.crt --name zabbix-monitoring
+# Add to Incus trust store
+incus config trust add-certificate client.crt
 ```
 
-### 2. Install Certificates on Zabbix Server
-
-Copy certificates to the Zabbix server:
+### 3. Install Certificates on Zabbix Server
 
 ```bash
-# Copy to Zabbix SSL directories
+sudo mkdir -p /usr/share/zabbix/ssl/certs
+sudo mkdir -p /usr/share/zabbix/ssl/keys
 sudo cp client.crt /usr/share/zabbix/ssl/certs/incus-client.crt
 sudo cp client.key /usr/share/zabbix/ssl/keys/incus-client.key
-
-# Set permissions
 sudo chown zabbix:zabbix /usr/share/zabbix/ssl/certs/incus-client.crt
 sudo chown zabbix:zabbix /usr/share/zabbix/ssl/keys/incus-client.key
 sudo chmod 644 /usr/share/zabbix/ssl/certs/incus-client.crt
 sudo chmod 600 /usr/share/zabbix/ssl/keys/incus-client.key
 ```
 
-### 3. Import Template
-
-1. In Zabbix web interface, go to **Data collection** > **Templates**
-2. Click **Import** and select `template_incus_cluster_http.yaml`
-3. Click **Import**
-
 ### 4. Create Host
 
-1. Go to **Data collection** > **Hosts**
-2. Click **Create host**
-3. Set hostname (e.g., "Incus Cluster")
-4. Add an **Agent** interface pointing to your Incus server (used for HTTP agent items)
-5. Link the **Incus Cluster by HTTP** template
-6. Configure host macros:
-   - `{$INCUS.API.HOST}`: Your Incus server hostname (e.g., `incus1.example.com`)
-   - `{$INCUS.API.PORT}`: API port (default: `8443`)
+1. Go to **Data collection** > **Hosts** > **Create host**
+2. Set hostname (e.g., "Incus Cluster")
+3. Link the **Incus Cluster by HTTP** template
+4. Configure host macros:
+
+| Macro | Value |
+|-------|-------|
+| `{$INCUS.API.HOST}` | Your Incus server hostname |
+| `{$INCUS.API.PORT}` | `8443` (default) |
+| `{$INCUS.TLS.CERT}` | `incus-client.crt` |
+| `{$INCUS.TLS.KEY}` | `incus-client.key` |
+
+### 5. Wait for Discovery
+
+- Cluster members are discovered and hosts created automatically
+- Instances on each member are then discovered
+- Default discovery interval is 1 hour (configurable via `{$INCUS.DISCOVERY.INTERVAL}`)
 
 ## Configuration Macros
 
@@ -76,67 +113,59 @@ sudo chmod 600 /usr/share/zabbix/ssl/keys/incus-client.key
 |-------|---------|-------------|
 | `{$INCUS.API.HOST}` | `localhost` | Incus server hostname |
 | `{$INCUS.API.PORT}` | `8443` | API port |
-| `{$INCUS.API.SCHEME}` | `https` | Protocol (https recommended) |
 | `{$INCUS.TLS.CERT}` | `incus-client.crt` | Client certificate filename |
 | `{$INCUS.TLS.KEY}` | `incus-client.key` | Client key filename |
-| `{$INCUS.DATA.INTERVAL}` | `30s` | Data collection interval |
+| `{$INCUS.DATA.INTERVAL}` | `5m` | Master data collection interval |
 | `{$INCUS.STATE.INTERVAL}` | `1m` | Instance state polling interval |
 | `{$INCUS.METRICS.INTERVAL}` | `1m` | Prometheus metrics interval |
 | `{$INCUS.DISCOVERY.INTERVAL}` | `1h` | Discovery interval |
 | `{$INCUS.INSTANCE.IGNORE}` | `^$` | Regex to ignore instances |
-| `{$INCUS.NETWORK.IGNORE}` | `^(lo\|docker...)$` | Regex to ignore networks |
-
-## Discovered Entities
-
-The template automatically discovers:
-
-- **Cluster Members**: All nodes in the cluster
-- **Instances**: Containers and VMs across all projects
-- **Network Interfaces**: Per-instance network interfaces
-- **Storage Pools**: All configured storage pools
-- **Images**: Available container/VM images
-- **Projects**: Incus projects
-- **Profiles**: Configuration profiles
-- **Networks**: Managed networks
+| `{$INCUS.STORAGE.PUSED.WARN}` | `80` | Storage warning threshold % |
+| `{$INCUS.STORAGE.PUSED.CRIT}` | `95` | Storage critical threshold % |
+| `{$INCUS.SNAPSHOT.MAXAGE}` | `7d` | Snapshot age warning |
+| `{$INCUS.MAINTENANCE}` | `0` | Set to 1 to suppress triggers |
 
 ## Metrics Collected
 
-### Cluster
-- Cluster enabled status
-- Member count and online status
-- Per-member: status, architecture, roles, goroutines, heap memory, uptime
+### Cluster Level
+- Cluster enabled status, member count, online members
+- Total instances by type and state
+- Warning count, storage pool usage, network status
 
-### Instances
-- Status (Running, Stopped, Frozen)
-- CPU usage (nanoseconds)
-- Memory usage and peak
-- Swap usage
-- Disk usage (root device)
-- Process count
+### Per Member
+- Member status (Online/Offline/Evacuated/Blocked)
+- Daemon uptime, goroutines, heap memory, operations
+
+### Per Instance (Container/VM)
+- Status, CPU usage, memory usage/peak/limit
+- Disk usage, process count
 - Network I/O per interface
-- Snapshot count and age
+- Snapshot count and age (system containers/VMs only)
 
-### Storage Pools
-- Total and used space
-- Usage percentage
-- Pool status
-
-### Server
-- API version
-- Server version
-- Warning count
+### OCI Container Specific
+- OCI entrypoint, source image
+- No snapshot monitoring (typically rebuilt from images)
 
 ## Triggers
 
-The template includes triggers for:
+- API connectivity issues (Disaster)
+- Cluster member offline (High)
+- Instance error state (High)
+- Storage pool space warnings (Warning/High)
+- Old snapshots (Warning)
+- Network interface errors (Warning)
 
-- API connectivity issues
-- Cluster member offline
-- Instance stopped unexpectedly
-- High CPU/memory usage
-- Storage pool space warnings
-- Old snapshots
-- Active warnings
+## Upgrading from v1.x
+
+The v2.0 architecture is significantly different from v1.x:
+
+1. **Backup** your existing template and host configuration
+2. **Remove** the old "Incus Cluster by HTTP" template link
+3. **Import** all 5 new templates
+4. **Re-link** the new "Incus Cluster by HTTP" template
+5. **Wait** for discovery to create member and instance hosts
+
+Note: Historical data will not be migrated automatically.
 
 ## License
 

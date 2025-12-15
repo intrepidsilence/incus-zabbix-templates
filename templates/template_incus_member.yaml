@@ -1,0 +1,561 @@
+zabbix_export:
+  version: '7.4'
+  template_groups:
+  - uuid: 0520ffa8bdb84ea7aa9be0f6f46a389c
+    name: Templates/Virtualization
+  host_groups:
+  - uuid: 309c0cde83a747d993962a579a587afa
+    name: Incus/System Containers
+  - uuid: b184248829734f5d90d537986e7161a7
+    name: Incus/OCI Containers
+  - uuid: f458681319d942e08bf77b206c62cbb7
+    name: Incus/Virtual Machines
+  templates:
+  - uuid: 565b9a9c480842eba34aa836e7bec657
+    template: Incus Cluster Member
+    name: Incus Cluster Member
+    description: 'Template for Incus cluster member hosts.
+
+
+      This template is automatically linked via host prototype when cluster
+
+      members are discovered by the main "Incus Cluster by HTTP" template.
+
+
+      Features:
+
+      - Member status monitoring
+
+      - Prometheus daemon metrics (uptime, goroutines, heap, operations)
+
+      - Nested instance discovery (creates host prototypes for containers/VMs)
+
+
+      Required macros (set by host prototype):
+
+      - {$INCUS.MEMBER.NAME} - Member server name
+
+      - {$INCUS.MEMBER.ADDRESS} - Member IP/hostname
+
+
+      Inherited macros (from parent cluster host):
+
+      - {$INCUS.API.SCHEME}, {$INCUS.API.PORT}
+
+      - {$INCUS.TLS.CERT}, {$INCUS.TLS.KEY}
+
+      - {$INCUS.METRICS.INTERVAL}, {$INCUS.STATE.INTERVAL}
+
+      '
+    vendor:
+      name: Community
+      version: 2.0.0
+    groups:
+    - name: Templates/Virtualization
+    items:
+    - uuid: 68174c37b9d64d3898747302b5516f53
+      name: 'Incus: Member Prometheus metrics'
+      type: HTTP_AGENT
+      key: incus.member.metrics.raw
+      delay: '{$INCUS.METRICS.INTERVAL}'
+      history: '0'
+      value_type: TEXT
+      description: Raw Prometheus metrics from this cluster member
+      timeout: 30s
+      url: '{$INCUS.API.SCHEME}://{$INCUS.MEMBER.ADDRESS}:{$INCUS.API.PORT}/1.0/metrics'
+      ssl_cert_file: '{$INCUS.TLS.CERT}'
+      ssl_key_file: '{$INCUS.TLS.KEY}'
+      tags:
+      - tag: component
+        value: metrics
+    - uuid: a7aa0c1ad43041c796619e3b5206cb59
+      name: 'Incus: Member status raw'
+      type: HTTP_AGENT
+      key: incus.member.status.raw
+      delay: '{$INCUS.DATA.INTERVAL}'
+      history: '0'
+      value_type: TEXT
+      description: Raw JSON for this specific cluster member
+      timeout: 30s
+      url: '{$INCUS.API.SCHEME}://{$INCUS.MEMBER.ADDRESS}:{$INCUS.API.PORT}/1.0/cluster/members/{$INCUS.MEMBER.NAME}'
+      ssl_cert_file: '{$INCUS.TLS.CERT}'
+      ssl_key_file: '{$INCUS.TLS.KEY}'
+      tags:
+      - tag: component
+        value: cluster
+    - uuid: 1def742213094ecd89d50744e8881f7d
+      name: 'Incus: Member instances raw'
+      type: HTTP_AGENT
+      key: incus.member.instances.raw
+      delay: '{$INCUS.DATA.INTERVAL}'
+      history: '0'
+      value_type: TEXT
+      description: All instances on this cluster member (for nested discovery)
+      timeout: 60s
+      url: '{$INCUS.API.SCHEME}://{$INCUS.MEMBER.ADDRESS}:{$INCUS.API.PORT}/1.0/instances'
+      query_fields:
+      - name: recursion
+        value: '2'
+      - name: all-projects
+        value: 'true'
+      - name: target
+        value: '{$INCUS.MEMBER.NAME}'
+      ssl_cert_file: '{$INCUS.TLS.CERT}'
+      ssl_key_file: '{$INCUS.TLS.KEY}'
+      tags:
+      - tag: component
+        value: instances
+    - uuid: 6a85cd23d52b4c7caa018c8541090d84
+      name: 'Incus: Member status'
+      type: DEPENDENT
+      key: incus.member.status
+      history: 7d
+      value_type: TEXT
+      description: Cluster member status (Online, Offline, Evacuated, Blocked)
+      preprocessing:
+      - type: JSONPATH
+        parameters:
+        - $.metadata.status
+      master_item:
+        key: incus.member.status.raw
+      tags:
+      - tag: component
+        value: cluster
+      triggers:
+      - uuid: e12829849c5a484bb9c668e826f2d2f5
+        expression: last(/Incus Cluster Member/incus.member.status)="Offline" and {$INCUS.MAINTENANCE}=0
+        name: 'Incus: Member is offline'
+        priority: HIGH
+        description: Cluster member is not reachable
+        tags:
+        - tag: scope
+          value: availability
+      - uuid: 40f11dce876c48898d43b3512484a661
+        expression: last(/Incus Cluster Member/incus.member.status)="Evacuated" and {$INCUS.MAINTENANCE}=0
+        name: 'Incus: Member is evacuated'
+        priority: WARNING
+        description: Cluster member has been evacuated
+        tags:
+        - tag: scope
+          value: notice
+      - uuid: 8ff365a5a7404406a1d48502cda71f09
+        expression: last(/Incus Cluster Member/incus.member.status)="Blocked" and {$INCUS.MAINTENANCE}=0
+        name: 'Incus: Member is blocked'
+        priority: AVERAGE
+        description: Cluster member is blocked
+        tags:
+        - tag: scope
+          value: availability
+    - uuid: c355526c234c43358bc439cadc21bf7c
+      name: 'Incus: Member message'
+      type: DEPENDENT
+      key: incus.member.message
+      history: 7d
+      value_type: TEXT
+      description: Cluster member status message
+      preprocessing:
+      - type: JSONPATH
+        parameters:
+        - $.metadata.message
+        error_handler: CUSTOM_VALUE
+      master_item:
+        key: incus.member.status.raw
+      tags:
+      - tag: component
+        value: cluster
+    - uuid: 724eed060fb248aa8c8fafe17ac5c5af
+      name: 'Incus: Member roles'
+      type: DEPENDENT
+      key: incus.member.roles
+      history: 7d
+      value_type: TEXT
+      description: Cluster member roles (database, database-leader, etc.)
+      preprocessing:
+      - type: JSONPATH
+        parameters:
+        - $.metadata.roles
+      - type: JAVASCRIPT
+        parameters:
+        - return JSON.stringify(JSON.parse(value));
+      master_item:
+        key: incus.member.status.raw
+      tags:
+      - tag: component
+        value: cluster
+    - uuid: 7b5eb9a56dd54dd6846cb236c849466a
+      name: 'Incus: Member architecture'
+      type: DEPENDENT
+      key: incus.member.architecture
+      history: 7d
+      value_type: TEXT
+      description: Cluster member CPU architecture
+      preprocessing:
+      - type: JSONPATH
+        parameters:
+        - $.metadata.architecture
+      master_item:
+        key: incus.member.status.raw
+      tags:
+      - tag: component
+        value: cluster
+    - uuid: 19d8d470311c406aabe0aacd4b093a0f
+      name: 'Incus: Member is database member'
+      type: DEPENDENT
+      key: incus.member.database
+      history: 7d
+      description: Whether this member is part of the database cluster
+      valuemap:
+        name: Incus Boolean
+      preprocessing:
+      - type: JSONPATH
+        parameters:
+        - $.metadata.database
+      - type: BOOL_TO_DECIMAL
+      master_item:
+        key: incus.member.status.raw
+      tags:
+      - tag: component
+        value: cluster
+    - uuid: 2306da1686b04269975723f372464568
+      name: 'Incus: Daemon uptime'
+      type: DEPENDENT
+      key: incus.daemon.uptime
+      history: 7d
+      value_type: FLOAT
+      units: uptime
+      description: Incus daemon uptime in seconds
+      preprocessing:
+      - type: PROMETHEUS_PATTERN
+        parameters:
+        - incus_uptime_seconds
+        - value
+        - ''
+        error_handler: CUSTOM_VALUE
+        error_handler_params: '0'
+      master_item:
+        key: incus.member.metrics.raw
+      tags:
+      - tag: component
+        value: daemon
+      triggers:
+      - uuid: 6d7895de4e614d099aed1f8024d2bc5a
+        expression: change(/Incus Cluster Member/incus.daemon.uptime)<0 and {$INCUS.MAINTENANCE}=0
+        name: 'Incus: Daemon restarted'
+        priority: INFO
+        description: Incus daemon was restarted on this member
+        manual_close: 'YES'
+        tags:
+        - tag: scope
+          value: notice
+    - uuid: 3dcdb0910dbf45a5b3c4794a9e1cb873
+      name: 'Incus: Daemon goroutines'
+      type: DEPENDENT
+      key: incus.daemon.goroutines
+      history: 7d
+      description: Number of Go goroutines
+      preprocessing:
+      - type: PROMETHEUS_PATTERN
+        parameters:
+        - incus_go_goroutines
+        - value
+        - ''
+        error_handler: CUSTOM_VALUE
+        error_handler_params: '0'
+      master_item:
+        key: incus.member.metrics.raw
+      tags:
+      - tag: component
+        value: daemon
+    - uuid: 8391fe2375ba44f4b1c50c78e6d56bd6
+      name: 'Incus: Daemon heap memory'
+      type: DEPENDENT
+      key: incus.daemon.heap
+      history: 7d
+      units: B
+      description: Go heap memory in use
+      preprocessing:
+      - type: PROMETHEUS_PATTERN
+        parameters:
+        - incus_go_memstats_heap_inuse_bytes
+        - value
+        - ''
+        error_handler: CUSTOM_VALUE
+        error_handler_params: '0'
+      master_item:
+        key: incus.member.metrics.raw
+      tags:
+      - tag: component
+        value: daemon
+    - uuid: b8c83c9a55104c3096a722959e9e3dfa
+      name: 'Incus: Daemon active operations'
+      type: DEPENDENT
+      key: incus.daemon.operations
+      history: 7d
+      description: Number of active operations
+      preprocessing:
+      - type: PROMETHEUS_PATTERN
+        parameters:
+        - incus_operations_total
+        - value
+        - ''
+        error_handler: CUSTOM_VALUE
+        error_handler_params: '0'
+      master_item:
+        key: incus.member.metrics.raw
+      tags:
+      - tag: component
+        value: daemon
+    - uuid: 088fe4d28ec84e6cbf093eb97489dc9b
+      name: 'Incus: Instances on this member'
+      type: DEPENDENT
+      key: incus.member.instances.count
+      history: 7d
+      description: Total number of instances on this cluster member
+      preprocessing:
+      - type: JSONPATH
+        parameters:
+        - $.metadata.length()
+        error_handler: CUSTOM_VALUE
+        error_handler_params: '0'
+      master_item:
+        key: incus.member.instances.raw
+      tags:
+      - tag: component
+        value: instances
+    discovery_rules:
+    - uuid: c3e4fe1b5199414480e93996b1956612
+      name: 'Incus: System containers discovery'
+      type: DEPENDENT
+      key: incus.discovery.system_containers
+      filter:
+        evaltype: AND
+        conditions:
+        - macro: '{#INSTANCE.NAME}'
+          value: '{$INCUS.INSTANCE.IGNORE}'
+          operator: NOT_MATCHES_REGEX
+        - macro: '{#INSTANCE.TYPE}'
+          value: container
+        - macro: '{#INSTANCE.OCI}'
+          value: 'false'
+      description: Discovers system containers on this member and creates host prototypes
+      host_prototypes:
+      - uuid: 222892ba4b9f47cab4c55b5195a04b18
+        host: '{#INSTANCE.PROJECT}-{#INSTANCE.NAME}'
+        name: '{#INSTANCE.NAME}'
+        group_links:
+        - group:
+            name: Incus/System Containers
+        group_prototypes:
+        - name: Incus/Projects/{#INSTANCE.PROJECT}
+        templates:
+        - name: Incus System Container
+        macros:
+        - macro: '{$INCUS.INSTANCE.NAME}'
+          value: '{#INSTANCE.NAME}'
+          description: Instance name (from discovery)
+        - macro: '{$INCUS.INSTANCE.PROJECT}'
+          value: '{#INSTANCE.PROJECT}'
+          description: Instance project (from discovery)
+        - macro: '{$INCUS.INSTANCE.TYPE}'
+          value: system-container
+          description: Instance type identifier
+        tags:
+        - tag: incus
+          value: instance
+        - tag: incus.type
+          value: system-container
+        - tag: instance
+          value: '{#INSTANCE.NAME}'
+        - tag: project
+          value: '{#INSTANCE.PROJECT}'
+      master_item:
+        key: incus.member.instances.raw
+      lld_macro_paths:
+      - lld_macro: '{#INSTANCE.NAME}'
+        path: $.name
+      - lld_macro: '{#INSTANCE.PROJECT}'
+        path: $.project
+      - lld_macro: '{#INSTANCE.TYPE}'
+        path: $.type
+      - lld_macro: '{#INSTANCE.STATUS}'
+        path: $.status
+      - lld_macro: '{#INSTANCE.OCI}'
+        path: $.is_oci
+      - lld_macro: '{#INSTANCE.ARCHITECTURE}'
+        path: $.architecture
+      preprocessing:
+      - type: JSONPATH
+        parameters:
+        - $.metadata
+      - type: JAVASCRIPT
+        parameters:
+        - "var instances = JSON.parse(value);\nvar result = [];\nfor (var i = 0; i < instances.length; i++) {\n  var inst = instances[i];\n  var isOci = inst.config && inst.config[\"volatile.container.oci\"] === \"true\";\n  result.push({\n    \"name\": inst.name,\n    \"project\": inst.project,\n    \"type\": inst.type,\n    \"status\": inst.status,\n    \"is_oci\": isOci ? \"true\" : \"false\",\n    \"architecture\": inst.architecture || \"\"\n  });\n}\nreturn JSON.stringify(result);\n"
+    - uuid: d010e913cc3a4c1ba86de349c5c2752f
+      name: 'Incus: OCI containers discovery'
+      type: DEPENDENT
+      key: incus.discovery.oci_containers
+      filter:
+        evaltype: AND
+        conditions:
+        - macro: '{#INSTANCE.NAME}'
+          value: '{$INCUS.INSTANCE.IGNORE}'
+          operator: NOT_MATCHES_REGEX
+        - macro: '{#INSTANCE.TYPE}'
+          value: container
+        - macro: '{#INSTANCE.OCI}'
+          value: 'true'
+      description: Discovers OCI/application containers on this member and creates host prototypes
+      host_prototypes:
+      - uuid: c6fd9a91abc34a2c8224296964b95f88
+        host: '{#INSTANCE.PROJECT}-{#INSTANCE.NAME}'
+        name: '{#INSTANCE.NAME}'
+        group_links:
+        - group:
+            name: Incus/OCI Containers
+        group_prototypes:
+        - name: Incus/Projects/{#INSTANCE.PROJECT}
+        templates:
+        - name: Incus OCI Container
+        macros:
+        - macro: '{$INCUS.INSTANCE.NAME}'
+          value: '{#INSTANCE.NAME}'
+          description: Instance name (from discovery)
+        - macro: '{$INCUS.INSTANCE.PROJECT}'
+          value: '{#INSTANCE.PROJECT}'
+          description: Instance project (from discovery)
+        - macro: '{$INCUS.INSTANCE.TYPE}'
+          value: oci-container
+          description: Instance type identifier
+        tags:
+        - tag: incus
+          value: instance
+        - tag: incus.type
+          value: oci-container
+        - tag: instance
+          value: '{#INSTANCE.NAME}'
+        - tag: project
+          value: '{#INSTANCE.PROJECT}'
+      master_item:
+        key: incus.member.instances.raw
+      lld_macro_paths:
+      - lld_macro: '{#INSTANCE.NAME}'
+        path: $.name
+      - lld_macro: '{#INSTANCE.PROJECT}'
+        path: $.project
+      - lld_macro: '{#INSTANCE.TYPE}'
+        path: $.type
+      - lld_macro: '{#INSTANCE.STATUS}'
+        path: $.status
+      - lld_macro: '{#INSTANCE.OCI}'
+        path: $.is_oci
+      - lld_macro: '{#INSTANCE.ARCHITECTURE}'
+        path: $.architecture
+      preprocessing:
+      - type: JSONPATH
+        parameters:
+        - $.metadata
+      - type: JAVASCRIPT
+        parameters:
+        - "var instances = JSON.parse(value);\nvar result = [];\nfor (var i = 0; i < instances.length; i++) {\n  var inst = instances[i];\n  var isOci = inst.config && inst.config[\"volatile.container.oci\"] === \"true\";\n  result.push({\n    \"name\": inst.name,\n    \"project\": inst.project,\n    \"type\": inst.type,\n    \"status\": inst.status,\n    \"is_oci\": isOci ? \"true\" : \"false\",\n    \"architecture\": inst.architecture || \"\"\n  });\n}\nreturn JSON.stringify(result);\n"
+    - uuid: 928f394fe1e449f4b0681d4b11aeab9f
+      name: 'Incus: Virtual machines discovery'
+      type: DEPENDENT
+      key: incus.discovery.virtual_machines
+      filter:
+        evaltype: AND
+        conditions:
+        - macro: '{#INSTANCE.NAME}'
+          value: '{$INCUS.INSTANCE.IGNORE}'
+          operator: NOT_MATCHES_REGEX
+        - macro: '{#INSTANCE.TYPE}'
+          value: virtual-machine
+      description: Discovers virtual machines on this member and creates host prototypes
+      host_prototypes:
+      - uuid: 1db6e862c2334572819a9d7a29259a2d
+        host: '{#INSTANCE.PROJECT}-{#INSTANCE.NAME}'
+        name: '{#INSTANCE.NAME}'
+        group_links:
+        - group:
+            name: Incus/Virtual Machines
+        group_prototypes:
+        - name: Incus/Projects/{#INSTANCE.PROJECT}
+        templates:
+        - name: Incus Virtual Machine
+        macros:
+        - macro: '{$INCUS.INSTANCE.NAME}'
+          value: '{#INSTANCE.NAME}'
+          description: Instance name (from discovery)
+        - macro: '{$INCUS.INSTANCE.PROJECT}'
+          value: '{#INSTANCE.PROJECT}'
+          description: Instance project (from discovery)
+        - macro: '{$INCUS.INSTANCE.TYPE}'
+          value: virtual-machine
+          description: Instance type identifier
+        tags:
+        - tag: incus
+          value: instance
+        - tag: incus.type
+          value: virtual-machine
+        - tag: instance
+          value: '{#INSTANCE.NAME}'
+        - tag: project
+          value: '{#INSTANCE.PROJECT}'
+      master_item:
+        key: incus.member.instances.raw
+      lld_macro_paths:
+      - lld_macro: '{#INSTANCE.NAME}'
+        path: $.name
+      - lld_macro: '{#INSTANCE.PROJECT}'
+        path: $.project
+      - lld_macro: '{#INSTANCE.TYPE}'
+        path: $.type
+      - lld_macro: '{#INSTANCE.STATUS}'
+        path: $.status
+      - lld_macro: '{#INSTANCE.OCI}'
+        path: $.is_oci
+      - lld_macro: '{#INSTANCE.ARCHITECTURE}'
+        path: $.architecture
+      preprocessing:
+      - type: JSONPATH
+        parameters:
+        - $.metadata
+      - type: JAVASCRIPT
+        parameters:
+        - "var instances = JSON.parse(value);\nvar result = [];\nfor (var i = 0; i < instances.length; i++) {\n  var inst = instances[i];\n  var isOci = inst.config && inst.config[\"volatile.container.oci\"] === \"true\";\n  result.push({\n    \"name\": inst.name,\n    \"project\": inst.project,\n    \"type\": inst.type,\n    \"status\": inst.status,\n    \"is_oci\": isOci ? \"true\" : \"false\",\n    \"architecture\": inst.architecture || \"\"\n  });\n}\nreturn JSON.stringify(result);\n"
+    macros:
+    - macro: '{$INCUS.MEMBER.NAME}'
+      description: Member name - set by host prototype
+    - macro: '{$INCUS.MEMBER.ADDRESS}'
+      description: Member address - set by host prototype
+    - macro: '{$INCUS.API.SCHEME}'
+      value: https
+      description: Protocol scheme (inherited from cluster host)
+    - macro: '{$INCUS.API.PORT}'
+      value: '8443'
+      description: API port (inherited from cluster host)
+    - macro: '{$INCUS.TLS.CERT}'
+      value: incus-client.crt
+      description: TLS certificate (inherited from cluster host)
+    - macro: '{$INCUS.TLS.KEY}'
+      value: incus-client.key
+      description: TLS key (inherited from cluster host)
+    - macro: '{$INCUS.DATA.INTERVAL}'
+      value: 5m
+      description: Data collection interval (inherited)
+    - macro: '{$INCUS.METRICS.INTERVAL}'
+      value: 1m
+      description: Prometheus metrics interval (inherited)
+    - macro: '{$INCUS.MAINTENANCE}'
+      value: '0'
+      description: Maintenance mode (inherited)
+    - macro: '{$INCUS.INSTANCE.IGNORE}'
+      value: ^$
+      description: Instance ignore pattern (inherited)
+    valuemaps:
+    - uuid: 9176378762ee4a0d9396b55372a4bd34
+      name: Incus Boolean
+      mappings:
+      - value: '0'
+        newvalue: 'No'
+      - value: '1'
+        newvalue: 'Yes'
