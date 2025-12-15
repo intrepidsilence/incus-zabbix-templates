@@ -179,8 +179,8 @@ The instance discovery extracts the instance's own IPv4 address:
 4. LLD macro `{#INSTANCE.ADDRESS}` extracts the resolved IP
 5. Host prototype interface uses `{#INSTANCE.ADDRESS}`
 
-### Naming Convention
-Discovered instance hosts use visible name `Incus: {#INSTANCE.NAME}` to avoid conflicts with pre-existing manual hosts that may share the same container names.
+### Naming Conflicts
+Discovered instance hosts use visible name `{#INSTANCE.NAME}`. If you have pre-existing manual hosts with the same names, either delete them or add the instance names to `{$INCUS.INSTANCE.IGNORE}` regex pattern.
 
 ### UUIDs
 Zabbix 7.4 requires valid UUIDv4 format. Generate with:
@@ -197,3 +197,4 @@ print(uuid.uuid4().hex)
 - always update the github project as changes are made
 - remember as we make changes to the templates to go ahead and clean up hosts in zabbix and reconfigure them and test to be sure everything is working in the templates
 - remember to use the config.yaml file for the api credentials
+- from now on when templates are updated be sure to delete all instances and incus hosts from zabbix before applying the new templates. then add and  configure the customer again after applying the new templates. this will ensure Zabbix is kept clean.

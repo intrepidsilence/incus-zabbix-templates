@@ -341,7 +341,7 @@ zabbix_export:
       host_prototypes:
       - uuid: 222892ba4b9f47cab4c55b5195a04b18
         host: '{#INSTANCE.PROJECT}-{#INSTANCE.NAME}'
-        name: 'Incus: {#INSTANCE.NAME}'
+        name: '{#INSTANCE.NAME}'
         group_links:
         - group:
             name: Incus/System Containers
@@ -418,7 +418,7 @@ zabbix_export:
       host_prototypes:
       - uuid: c6fd9a91abc34a2c8224296964b95f88
         host: '{#INSTANCE.PROJECT}-{#INSTANCE.NAME}'
-        name: 'Incus: {#INSTANCE.NAME}'
+        name: '{#INSTANCE.NAME}'
         group_links:
         - group:
             name: Incus/OCI Containers
@@ -493,7 +493,7 @@ zabbix_export:
       host_prototypes:
       - uuid: 1db6e862c2334572819a9d7a29259a2d
         host: '{#INSTANCE.PROJECT}-{#INSTANCE.NAME}'
-        name: 'Incus: {#INSTANCE.NAME}'
+        name: '{#INSTANCE.NAME}'
         group_links:
         - group:
             name: Incus/Virtual Machines
