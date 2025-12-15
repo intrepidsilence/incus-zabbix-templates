@@ -370,7 +370,7 @@ zabbix_export:
           value: '{#INSTANCE.PROJECT}'
         custom_interfaces: 'YES'
         interfaces:
-        - ip: '127.0.0.1'
+        - ip: '{#MEMBER.ADDRESS}'
           port: '10050'
       master_item:
         key: incus.member.instances.raw
@@ -387,13 +387,19 @@ zabbix_export:
         path: $.is_oci
       - lld_macro: '{#INSTANCE.ARCHITECTURE}'
         path: $.architecture
+      - lld_macro: '{#MEMBER.ADDRESS}'
+        path: $.member_address
       preprocessing:
       - type: JSONPATH
         parameters:
         - $.metadata
       - type: JAVASCRIPT
         parameters:
-        - "var instances = JSON.parse(value);\nvar result = [];\nfor (var i = 0; i < instances.length; i++) {\n  var inst = instances[i];\n  var isOci = inst.config && inst.config[\"volatile.container.oci\"] === \"true\";\n  result.push({\n    \"name\": inst.name,\n    \"project\": inst.project,\n    \"type\": inst.type,\n    \"status\": inst.status,\n    \"is_oci\": isOci ? \"true\" : \"false\",\n    \"architecture\": inst.architecture || \"\"\n  });\n}\nreturn JSON.stringify(result);\n"
+        - "var instances = JSON.parse(value);\nvar result = [];\nfor (var i = 0; i < instances.length; i++) {\n  var inst = instances[i];\n  var isOci = inst.config && inst.config[\"volatile.container.oci\"] === \"true\";\n  result.push({\n    \"name\": inst.name,\n    \"project\": inst.project,\n    \"type\": inst.type,\n    \"status\": inst.status,\n    \"is_oci\": isOci ? \"true\" : \"false\",\n    \"architecture\": inst.architecture || \"\",\n    \"member_address\": \"__MEMBER_ADDR__\"\n  });\n}\nreturn JSON.stringify(result);\n"
+      - type: STR_REPLACE
+        parameters:
+        - __MEMBER_ADDR__
+        - '{$INCUS.MEMBER.ADDRESS}'
     - uuid: d010e913cc3a4c1ba86de349c5c2752f
       name: 'Incus: OCI containers discovery'
       type: DEPENDENT
@@ -441,7 +447,7 @@ zabbix_export:
           value: '{#INSTANCE.PROJECT}'
         custom_interfaces: 'YES'
         interfaces:
-        - ip: '127.0.0.1'
+        - ip: '{#MEMBER.ADDRESS}'
           port: '10050'
       master_item:
         key: incus.member.instances.raw
@@ -458,13 +464,19 @@ zabbix_export:
         path: $.is_oci
       - lld_macro: '{#INSTANCE.ARCHITECTURE}'
         path: $.architecture
+      - lld_macro: '{#MEMBER.ADDRESS}'
+        path: $.member_address
       preprocessing:
       - type: JSONPATH
         parameters:
         - $.metadata
       - type: JAVASCRIPT
         parameters:
-        - "var instances = JSON.parse(value);\nvar result = [];\nfor (var i = 0; i < instances.length; i++) {\n  var inst = instances[i];\n  var isOci = inst.config && inst.config[\"volatile.container.oci\"] === \"true\";\n  result.push({\n    \"name\": inst.name,\n    \"project\": inst.project,\n    \"type\": inst.type,\n    \"status\": inst.status,\n    \"is_oci\": isOci ? \"true\" : \"false\",\n    \"architecture\": inst.architecture || \"\"\n  });\n}\nreturn JSON.stringify(result);\n"
+        - "var instances = JSON.parse(value);\nvar result = [];\nfor (var i = 0; i < instances.length; i++) {\n  var inst = instances[i];\n  var isOci = inst.config && inst.config[\"volatile.container.oci\"] === \"true\";\n  result.push({\n    \"name\": inst.name,\n    \"project\": inst.project,\n    \"type\": inst.type,\n    \"status\": inst.status,\n    \"is_oci\": isOci ? \"true\" : \"false\",\n    \"architecture\": inst.architecture || \"\",\n    \"member_address\": \"__MEMBER_ADDR__\"\n  });\n}\nreturn JSON.stringify(result);\n"
+      - type: STR_REPLACE
+        parameters:
+        - __MEMBER_ADDR__
+        - '{$INCUS.MEMBER.ADDRESS}'
     - uuid: 928f394fe1e449f4b0681d4b11aeab9f
       name: 'Incus: Virtual machines discovery'
       type: DEPENDENT
@@ -510,7 +522,7 @@ zabbix_export:
           value: '{#INSTANCE.PROJECT}'
         custom_interfaces: 'YES'
         interfaces:
-        - ip: '127.0.0.1'
+        - ip: '{#MEMBER.ADDRESS}'
           port: '10050'
       master_item:
         key: incus.member.instances.raw
@@ -527,13 +539,19 @@ zabbix_export:
         path: $.is_oci
       - lld_macro: '{#INSTANCE.ARCHITECTURE}'
         path: $.architecture
+      - lld_macro: '{#MEMBER.ADDRESS}'
+        path: $.member_address
       preprocessing:
       - type: JSONPATH
         parameters:
         - $.metadata
       - type: JAVASCRIPT
         parameters:
-        - "var instances = JSON.parse(value);\nvar result = [];\nfor (var i = 0; i < instances.length; i++) {\n  var inst = instances[i];\n  var isOci = inst.config && inst.config[\"volatile.container.oci\"] === \"true\";\n  result.push({\n    \"name\": inst.name,\n    \"project\": inst.project,\n    \"type\": inst.type,\n    \"status\": inst.status,\n    \"is_oci\": isOci ? \"true\" : \"false\",\n    \"architecture\": inst.architecture || \"\"\n  });\n}\nreturn JSON.stringify(result);\n"
+        - "var instances = JSON.parse(value);\nvar result = [];\nfor (var i = 0; i < instances.length; i++) {\n  var inst = instances[i];\n  var isOci = inst.config && inst.config[\"volatile.container.oci\"] === \"true\";\n  result.push({\n    \"name\": inst.name,\n    \"project\": inst.project,\n    \"type\": inst.type,\n    \"status\": inst.status,\n    \"is_oci\": isOci ? \"true\" : \"false\",\n    \"architecture\": inst.architecture || \"\",\n    \"member_address\": \"__MEMBER_ADDR__\"\n  });\n}\nreturn JSON.stringify(result);\n"
+      - type: STR_REPLACE
+        parameters:
+        - __MEMBER_ADDR__
+        - '{$INCUS.MEMBER.ADDRESS}'
     macros:
     - macro: '{$INCUS.MEMBER.NAME}'
       description: Member name - set by host prototype

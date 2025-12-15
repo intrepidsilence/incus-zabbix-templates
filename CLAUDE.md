@@ -167,12 +167,16 @@ The templates interact with these endpoints:
 If you see `{$INCUS.INSTANCE.NAME}` literally in the UI, the tag is defined on a template item using a user macro. Move such tags to the host prototype level using LLD macros instead.
 
 ### Host Prototype Interfaces
-User macros (`{$MACRO}`) do NOT resolve in host prototype interface definitions - only LLD macros (`{#MACRO}`) work there.
+User macros (`{$MACRO}`) do NOT resolve directly in host prototype interface definitions - only LLD macros (`{#MACRO}`) work there.
 
 - **Member hosts**: Use `{#MEMBER.ADDRESS}` (LLD macro from cluster member discovery) → resolves to actual IP
-- **Instance hosts**: Use `127.0.0.1` placeholder because member address is inherited as user macro `{$INCUS.MEMBER.ADDRESS}`, which doesn't resolve in interfaces
+- **Instance hosts**: Use `{#MEMBER.ADDRESS}` (injected via STR_REPLACE preprocessing)
 
-The interface IP is just a Zabbix requirement - actual data collection uses HTTP Agent items where user macros in URLs DO resolve correctly.
+The instance discovery injects the member address by:
+1. JavaScript adds `"member_address": "__MEMBER_ADDR__"` placeholder to each discovered instance
+2. STR_REPLACE preprocessing substitutes `__MEMBER_ADDR__` with `{$INCUS.MEMBER.ADDRESS}` (user macros resolve in preprocessing parameters)
+3. LLD macro `{#MEMBER.ADDRESS}` extracts from `$.member_address`
+4. Host prototype interface uses `{#MEMBER.ADDRESS}` which resolves correctly
 
 ### UUIDs
 Zabbix 7.4 requires valid UUIDv4 format. Generate with:
