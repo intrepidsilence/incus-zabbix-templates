@@ -170,13 +170,17 @@ If you see `{$INCUS.INSTANCE.NAME}` literally in the UI, the tag is defined on a
 User macros (`{$MACRO}`) do NOT resolve directly in host prototype interface definitions - only LLD macros (`{#MACRO}`) work there.
 
 - **Member hosts**: Use `{#MEMBER.ADDRESS}` (LLD macro from cluster member discovery) → resolves to actual IP
-- **Instance hosts**: Use `{#MEMBER.ADDRESS}` (injected via STR_REPLACE preprocessing)
+- **Instance hosts**: Use `{#INSTANCE.ADDRESS}` (extracted from instance state.network)
 
-The instance discovery injects the member address by:
-1. JavaScript adds `"member_address": "__MEMBER_ADDR__"` placeholder to each discovered instance
-2. STR_REPLACE preprocessing substitutes `__MEMBER_ADDR__` with `{$INCUS.MEMBER.ADDRESS}` (user macros resolve in preprocessing parameters)
-3. LLD macro `{#MEMBER.ADDRESS}` extracts from `$.member_address`
-4. Host prototype interface uses `{#MEMBER.ADDRESS}` which resolves correctly
+The instance discovery extracts the instance's own IPv4 address:
+1. JavaScript iterates `state.network` interfaces, finds first global IPv4 address
+2. If no IP found (stopped instance, no agent), falls back to `__MEMBER_ADDR__` placeholder
+3. STR_REPLACE substitutes `__MEMBER_ADDR__` with `{$INCUS.MEMBER.ADDRESS}` (fallback to member IP)
+4. LLD macro `{#INSTANCE.ADDRESS}` extracts the resolved IP
+5. Host prototype interface uses `{#INSTANCE.ADDRESS}`
+
+### Naming Convention
+Discovered instance hosts use visible name `Incus: {#INSTANCE.NAME}` to avoid conflicts with pre-existing manual hosts that may share the same container names.
 
 ### UUIDs
 Zabbix 7.4 requires valid UUIDv4 format. Generate with:

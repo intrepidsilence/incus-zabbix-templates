@@ -341,7 +341,7 @@ zabbix_export:
       host_prototypes:
       - uuid: 222892ba4b9f47cab4c55b5195a04b18
         host: '{#INSTANCE.PROJECT}-{#INSTANCE.NAME}'
-        name: '{#INSTANCE.NAME}'
+        name: 'Incus: {#INSTANCE.NAME}'
         group_links:
         - group:
             name: Incus/System Containers
@@ -370,7 +370,7 @@ zabbix_export:
           value: '{#INSTANCE.PROJECT}'
         custom_interfaces: 'YES'
         interfaces:
-        - ip: '{#MEMBER.ADDRESS}'
+        - ip: '{#INSTANCE.ADDRESS}'
           port: '10050'
       master_item:
         key: incus.member.instances.raw
@@ -387,15 +387,15 @@ zabbix_export:
         path: $.is_oci
       - lld_macro: '{#INSTANCE.ARCHITECTURE}'
         path: $.architecture
-      - lld_macro: '{#MEMBER.ADDRESS}'
-        path: $.member_address
+      - lld_macro: '{#INSTANCE.ADDRESS}'
+        path: $.instance_address
       preprocessing:
       - type: JSONPATH
         parameters:
         - $.metadata
       - type: JAVASCRIPT
         parameters:
-        - "var instances = JSON.parse(value);\nvar result = [];\nfor (var i = 0; i < instances.length; i++) {\n  var inst = instances[i];\n  var isOci = inst.config && inst.config[\"volatile.container.oci\"] === \"true\";\n  result.push({\n    \"name\": inst.name,\n    \"project\": inst.project,\n    \"type\": inst.type,\n    \"status\": inst.status,\n    \"is_oci\": isOci ? \"true\" : \"false\",\n    \"architecture\": inst.architecture || \"\",\n    \"member_address\": \"__MEMBER_ADDR__\"\n  });\n}\nreturn JSON.stringify(result);\n"
+        - "var instances = JSON.parse(value);\nvar result = [];\nfor (var i = 0; i < instances.length; i++) {\n  var inst = instances[i];\n  var isOci = inst.config && inst.config[\"volatile.container.oci\"] === \"true\";\n  var instanceIp = \"__MEMBER_ADDR__\";\n  if (inst.state && inst.state.network) {\n    for (var iface in inst.state.network) {\n      var addresses = inst.state.network[iface].addresses || [];\n      for (var j = 0; j < addresses.length; j++) {\n        var addr = addresses[j];\n        if (addr.family === \"inet\" && addr.scope === \"global\") {\n          instanceIp = addr.address;\n          break;\n        }\n      }\n      if (instanceIp !== \"__MEMBER_ADDR__\") break;\n    }\n  }\n  result.push({\n    \"name\": inst.name,\n    \"project\": inst.project,\n    \"type\": inst.type,\n    \"status\": inst.status,\n    \"is_oci\": isOci ? \"true\" : \"false\",\n    \"architecture\": inst.architecture || \"\",\n    \"instance_address\": instanceIp\n  });\n}\nreturn JSON.stringify(result);\n"
       - type: STR_REPLACE
         parameters:
         - __MEMBER_ADDR__
@@ -418,7 +418,7 @@ zabbix_export:
       host_prototypes:
       - uuid: c6fd9a91abc34a2c8224296964b95f88
         host: '{#INSTANCE.PROJECT}-{#INSTANCE.NAME}'
-        name: '{#INSTANCE.NAME}'
+        name: 'Incus: {#INSTANCE.NAME}'
         group_links:
         - group:
             name: Incus/OCI Containers
@@ -447,7 +447,7 @@ zabbix_export:
           value: '{#INSTANCE.PROJECT}'
         custom_interfaces: 'YES'
         interfaces:
-        - ip: '{#MEMBER.ADDRESS}'
+        - ip: '{#INSTANCE.ADDRESS}'
           port: '10050'
       master_item:
         key: incus.member.instances.raw
@@ -464,15 +464,15 @@ zabbix_export:
         path: $.is_oci
       - lld_macro: '{#INSTANCE.ARCHITECTURE}'
         path: $.architecture
-      - lld_macro: '{#MEMBER.ADDRESS}'
-        path: $.member_address
+      - lld_macro: '{#INSTANCE.ADDRESS}'
+        path: $.instance_address
       preprocessing:
       - type: JSONPATH
         parameters:
         - $.metadata
       - type: JAVASCRIPT
         parameters:
-        - "var instances = JSON.parse(value);\nvar result = [];\nfor (var i = 0; i < instances.length; i++) {\n  var inst = instances[i];\n  var isOci = inst.config && inst.config[\"volatile.container.oci\"] === \"true\";\n  result.push({\n    \"name\": inst.name,\n    \"project\": inst.project,\n    \"type\": inst.type,\n    \"status\": inst.status,\n    \"is_oci\": isOci ? \"true\" : \"false\",\n    \"architecture\": inst.architecture || \"\",\n    \"member_address\": \"__MEMBER_ADDR__\"\n  });\n}\nreturn JSON.stringify(result);\n"
+        - "var instances = JSON.parse(value);\nvar result = [];\nfor (var i = 0; i < instances.length; i++) {\n  var inst = instances[i];\n  var isOci = inst.config && inst.config[\"volatile.container.oci\"] === \"true\";\n  var instanceIp = \"__MEMBER_ADDR__\";\n  if (inst.state && inst.state.network) {\n    for (var iface in inst.state.network) {\n      var addresses = inst.state.network[iface].addresses || [];\n      for (var j = 0; j < addresses.length; j++) {\n        var addr = addresses[j];\n        if (addr.family === \"inet\" && addr.scope === \"global\") {\n          instanceIp = addr.address;\n          break;\n        }\n      }\n      if (instanceIp !== \"__MEMBER_ADDR__\") break;\n    }\n  }\n  result.push({\n    \"name\": inst.name,\n    \"project\": inst.project,\n    \"type\": inst.type,\n    \"status\": inst.status,\n    \"is_oci\": isOci ? \"true\" : \"false\",\n    \"architecture\": inst.architecture || \"\",\n    \"instance_address\": instanceIp\n  });\n}\nreturn JSON.stringify(result);\n"
       - type: STR_REPLACE
         parameters:
         - __MEMBER_ADDR__
@@ -493,7 +493,7 @@ zabbix_export:
       host_prototypes:
       - uuid: 1db6e862c2334572819a9d7a29259a2d
         host: '{#INSTANCE.PROJECT}-{#INSTANCE.NAME}'
-        name: '{#INSTANCE.NAME}'
+        name: 'Incus: {#INSTANCE.NAME}'
         group_links:
         - group:
             name: Incus/Virtual Machines
@@ -522,7 +522,7 @@ zabbix_export:
           value: '{#INSTANCE.PROJECT}'
         custom_interfaces: 'YES'
         interfaces:
-        - ip: '{#MEMBER.ADDRESS}'
+        - ip: '{#INSTANCE.ADDRESS}'
           port: '10050'
       master_item:
         key: incus.member.instances.raw
@@ -539,15 +539,15 @@ zabbix_export:
         path: $.is_oci
       - lld_macro: '{#INSTANCE.ARCHITECTURE}'
         path: $.architecture
-      - lld_macro: '{#MEMBER.ADDRESS}'
-        path: $.member_address
+      - lld_macro: '{#INSTANCE.ADDRESS}'
+        path: $.instance_address
       preprocessing:
       - type: JSONPATH
         parameters:
         - $.metadata
       - type: JAVASCRIPT
         parameters:
-        - "var instances = JSON.parse(value);\nvar result = [];\nfor (var i = 0; i < instances.length; i++) {\n  var inst = instances[i];\n  var isOci = inst.config && inst.config[\"volatile.container.oci\"] === \"true\";\n  result.push({\n    \"name\": inst.name,\n    \"project\": inst.project,\n    \"type\": inst.type,\n    \"status\": inst.status,\n    \"is_oci\": isOci ? \"true\" : \"false\",\n    \"architecture\": inst.architecture || \"\",\n    \"member_address\": \"__MEMBER_ADDR__\"\n  });\n}\nreturn JSON.stringify(result);\n"
+        - "var instances = JSON.parse(value);\nvar result = [];\nfor (var i = 0; i < instances.length; i++) {\n  var inst = instances[i];\n  var isOci = inst.config && inst.config[\"volatile.container.oci\"] === \"true\";\n  var instanceIp = \"__MEMBER_ADDR__\";\n  if (inst.state && inst.state.network) {\n    for (var iface in inst.state.network) {\n      var addresses = inst.state.network[iface].addresses || [];\n      for (var j = 0; j < addresses.length; j++) {\n        var addr = addresses[j];\n        if (addr.family === \"inet\" && addr.scope === \"global\") {\n          instanceIp = addr.address;\n          break;\n        }\n      }\n      if (instanceIp !== \"__MEMBER_ADDR__\") break;\n    }\n  }\n  result.push({\n    \"name\": inst.name,\n    \"project\": inst.project,\n    \"type\": inst.type,\n    \"status\": inst.status,\n    \"is_oci\": isOci ? \"true\" : \"false\",\n    \"architecture\": inst.architecture || \"\",\n    \"instance_address\": instanceIp\n  });\n}\nreturn JSON.stringify(result);\n"
       - type: STR_REPLACE
         parameters:
         - __MEMBER_ADDR__
