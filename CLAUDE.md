@@ -193,8 +193,18 @@ print(uuid.uuid4().hex)
 - Import in dependency order (children first)
 - Ensure `template_groups` and `host_groups` are separate sections
 - Group prototypes can only use LLD macros, not user macros
-- always remember to keep all markdown files updated as changes dictate
-- always update the github project as changes are made
-- remember as we make changes to the templates to go ahead and clean up hosts in zabbix and reconfigure them and test to be sure everything is working in the templates
-- remember to use the config.yaml file for the api credentials
-- from now on when templates are updated be sure to delete all instances and incus hosts from zabbix before applying the new templates. then add and  configure the customer again after applying the new templates. this will ensure Zabbix is kept clean.
+
+### Template Update Procedure
+When updating templates, always clean up Zabbix first:
+1. Delete all Incus instance hosts
+2. Delete all Incus member hosts
+3. Delete the Incus Cluster host
+4. Delete all Incus templates (in reverse dependency order)
+5. Import updated templates (in dependency order)
+6. Recreate Incus Cluster host with macros
+7. Wait for discovery to recreate member and instance hosts
+
+### Development Notes
+- Always keep all markdown files updated as changes dictate
+- Always update the GitHub project as changes are made
+- Use config.yaml for Zabbix API credentials
