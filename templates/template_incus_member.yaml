@@ -368,6 +368,10 @@ zabbix_export:
           value: '{#INSTANCE.NAME}'
         - tag: project
           value: '{#INSTANCE.PROJECT}'
+        custom_interfaces: 'YES'
+        interfaces:
+        - ip: '{$INCUS.MEMBER.ADDRESS}'
+          port: '10050'
       master_item:
         key: incus.member.instances.raw
       lld_macro_paths:
@@ -435,6 +439,10 @@ zabbix_export:
           value: '{#INSTANCE.NAME}'
         - tag: project
           value: '{#INSTANCE.PROJECT}'
+        custom_interfaces: 'YES'
+        interfaces:
+        - ip: '{$INCUS.MEMBER.ADDRESS}'
+          port: '10050'
       master_item:
         key: incus.member.instances.raw
       lld_macro_paths:
@@ -500,6 +508,10 @@ zabbix_export:
           value: '{#INSTANCE.NAME}'
         - tag: project
           value: '{#INSTANCE.PROJECT}'
+        custom_interfaces: 'YES'
+        interfaces:
+        - ip: '{$INCUS.MEMBER.ADDRESS}'
+          port: '10050'
       master_item:
         key: incus.member.instances.raw
       lld_macro_paths:

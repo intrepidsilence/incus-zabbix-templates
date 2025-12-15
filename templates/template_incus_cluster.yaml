@@ -628,7 +628,7 @@ zabbix_export:
               custom_interfaces: 'YES'
               interfaces:
                 - ip: '{#MEMBER.ADDRESS}'
-                  port: '{$INCUS.API.PORT}'
+                  port: '10050'
               tags:
                 - tag: incus
                   value: member

@@ -177,3 +177,5 @@ print(uuid.uuid4().hex)
 - Import in dependency order (children first)
 - Ensure `template_groups` and `host_groups` are separate sections
 - Group prototypes can only use LLD macros, not user macros
+- always remember to keep all markdown files updated as changes dictate
+- always update the github project as changes are made
