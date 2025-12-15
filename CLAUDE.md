@@ -166,6 +166,14 @@ The templates interact with these endpoints:
 ### Unresolved Macros in Tags
 If you see `{$INCUS.INSTANCE.NAME}` literally in the UI, the tag is defined on a template item using a user macro. Move such tags to the host prototype level using LLD macros instead.
 
+### Host Prototype Interfaces
+User macros (`{$MACRO}`) do NOT resolve in host prototype interface definitions - only LLD macros (`{#MACRO}`) work there.
+
+- **Member hosts**: Use `{#MEMBER.ADDRESS}` (LLD macro from cluster member discovery) → resolves to actual IP
+- **Instance hosts**: Use `127.0.0.1` placeholder because member address is inherited as user macro `{$INCUS.MEMBER.ADDRESS}`, which doesn't resolve in interfaces
+
+The interface IP is just a Zabbix requirement - actual data collection uses HTTP Agent items where user macros in URLs DO resolve correctly.
+
 ### UUIDs
 Zabbix 7.4 requires valid UUIDv4 format. Generate with:
 ```python
@@ -179,3 +187,5 @@ print(uuid.uuid4().hex)
 - Group prototypes can only use LLD macros, not user macros
 - always remember to keep all markdown files updated as changes dictate
 - always update the github project as changes are made
+- remember as we make changes to the templates to go ahead and clean up hosts in zabbix and reconfigure them and test to be sure everything is working in the templates
+- remember to use the config.yaml file for the api credentials

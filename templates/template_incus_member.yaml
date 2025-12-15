@@ -370,7 +370,7 @@ zabbix_export:
           value: '{#INSTANCE.PROJECT}'
         custom_interfaces: 'YES'
         interfaces:
-        - ip: '{$INCUS.MEMBER.ADDRESS}'
+        - ip: '127.0.0.1'
           port: '10050'
       master_item:
         key: incus.member.instances.raw
@@ -441,7 +441,7 @@ zabbix_export:
           value: '{#INSTANCE.PROJECT}'
         custom_interfaces: 'YES'
         interfaces:
-        - ip: '{$INCUS.MEMBER.ADDRESS}'
+        - ip: '127.0.0.1'
           port: '10050'
       master_item:
         key: incus.member.instances.raw
@@ -510,7 +510,7 @@ zabbix_export:
           value: '{#INSTANCE.PROJECT}'
         custom_interfaces: 'YES'
         interfaces:
-        - ip: '{$INCUS.MEMBER.ADDRESS}'
+        - ip: '127.0.0.1'
           port: '10050'
       master_item:
         key: incus.member.instances.raw
